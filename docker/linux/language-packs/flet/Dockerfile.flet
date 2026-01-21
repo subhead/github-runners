@@ -150,7 +150,8 @@ RUN python3 --version && \
     dart --version && \
     node --version && \
     google-chrome --version && \
-    python3 -c "import flet; print(f'Flet version: {flet.__version__}')"
+    python3 -c "import flet; print(f'Flet installed successfully')" && \
+    pip3 show flet | grep Version
 USER root
 
 # Labels
