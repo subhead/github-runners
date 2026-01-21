@@ -17,10 +17,6 @@ COPY --from=gh-runner:python-pack /usr/lib/python3.10 /usr/lib/python3.10
 COPY --from=gh-runner:python-pack /usr/local/lib/python3.10 /usr/local/lib/python3.10
 COPY --from=gh-runner:python-pack /opt/venv /opt/venv
 
-# Copy Python configuration
-COPY --from=gh-runner:python-pack /etc/alternatives/python3 /etc/alternatives/python3
-COPY --from=gh-runner:python-pack /etc/alternatives/python3-config /etc/alternatives/python3-config
-
 # Create symlink for python
 RUN ln -sf /usr/bin/python3 /usr/bin/python
 
