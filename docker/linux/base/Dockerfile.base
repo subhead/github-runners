@@ -42,7 +42,7 @@ WORKDIR /actions-runner
 USER runner
 
 # Copy entrypoint script
-COPY --chown=runner:runner entrypoint/entrypoint.sh /entrypoint.sh
+COPY --chown=runner:runner docker/linux/entrypoint/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # Environment variables
