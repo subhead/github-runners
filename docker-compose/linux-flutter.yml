@@ -47,8 +47,8 @@ services:
 
     # Environment variables (REQUIRED)
     environment:
-      - GITHUB_TOKEN=${GITHUB_TOKEN:?ERROR: GITHUB_TOKEN environment variable is required}
-      - GITHUB_REPOSITORY=${GITHUB_REPOSITORY:?ERROR: GITHUB_REPOSITORY environment variable is required}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:?GITHUB_TOKEN environment variable is required}
+      - GITHUB_REPOSITORY=${GITHUB_REPOSITORY:?GITHUB_REPOSITORY environment variable is required}
       - RUNNER_NAME=${RUNNER_NAME:-flutter-runner-01}
       - RUNNER_LABELS=${RUNNER_LABELS:-linux,flutter,dart,mobile,android,ios}
       - RUNNER_GROUP=${RUNNER_GROUP:-Default}
