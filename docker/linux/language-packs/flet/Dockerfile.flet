@@ -127,7 +127,7 @@ ENV PUB_CACHE=/opt/flutter/.pub-cache
 
 # Install Flet Python package and Flutter packages
 # Flet SDK for building cross-platform apps
-RUN pip install --no-cache-dir flet==0.22.0
+RUN pip install --no-cache-dir flet==0.22.0 repath
 
 # Create directories and set permissions
 RUN mkdir -p /opt/flutter/.pub-cache && \
