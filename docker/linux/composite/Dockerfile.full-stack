@@ -30,6 +30,7 @@ COPY --from=gh-runner:cpp-pack /usr/lib/ /usr/lib/
 COPY --from=gh-runner:cpp-pack /usr/include/ /usr/include/
 COPY --from=gh-runner:cpp-pack /usr/local/lib/ /usr/local/lib/
 COPY --from=gh-runner:cpp-pack /usr/local/include/ /usr/local/include/
+COPY --from=gh-runner:cpp-pack /usr/share/ /usr/share/
 
 # Copy Node.js toolchain (all npm packages install to /usr/bin/ when npm prefix is /usr)
 COPY --from=gh-runner:nodejs-pack /usr/bin/node /usr/bin/node
