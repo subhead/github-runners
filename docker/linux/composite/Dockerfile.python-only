@@ -10,7 +10,6 @@ COPY --from=gh-runner:python-pack /usr/bin/python3.10 /usr/bin/python3.10
 COPY --from=gh-runner:python-pack /usr/bin/python3.10-config /usr/bin/python3.10-config
 COPY --from=gh-runner:python-pack /usr/local/bin/pip3 /usr/local/bin/pip3
 COPY --from=gh-runner:python-pack /usr/local/bin/pip /usr/local/bin/pip
-COPY --from=gh-runner:python-pack /usr/local/bin/activate /usr/local/bin/activate 2>/dev/null || true
 
 # Copy Python libraries
 COPY --from=gh-runner:python-pack /usr/lib/python3.10 /usr/lib/python3.10
