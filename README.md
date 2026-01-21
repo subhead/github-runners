@@ -79,13 +79,27 @@ cd github-runner
 
 ### Step 2: Configure Environment
 
-Create `.env` file:
+Copy and edit the `.env` file:
+```bash
+# Copy the template
+cp .env.template .env
+
+# Edit .env with your values
+# GITHUB_TOKEN=ghp_your_token_here
+# GITHUB_OWNER=your-org          # OR GITHUB_REPOSITORY=your-org/your-repo
+# RUNNER_NAME=my-runner
+# RUNNER_LABELS=linux,python
+```
+
+**For Python-based projects (multiple repositories)**, use `GITHUB_OWNER` for organization-level runner:
 ```bash
 GITHUB_TOKEN=ghp_your_token_here
-GITHUB_REPOSITORY=your-org/your-repo
-RUNNER_NAME=my-runner
-RUNNER_LABELS=linux,production
+GITHUB_OWNER=your-org
+RUNNER_NAME=org-python-runner
+RUNNER_LABELS=linux,python,ml
 ```
+
+**See the "Environment Variables" section below for detailed explanations of all variables.**
 
 ### Step 3: Choose Your Runner
 
@@ -235,17 +249,417 @@ jobs:
 
 ## 🔧 Environment Variables
 
-### Required
-- `GITHUB_TOKEN`: GitHub personal access token
-- `GITHUB_REPOSITORY`: Target repository (owner/repo) OR `GITHUB_OWNER` for org runners
+All environment variables are defined in the `.env.template` file. Copy this file to `.env` and customize it for your needs.
 
-### Optional
-- `RUNNER_NAME`: Unique runner identifier (auto-generated if not set)
-- `RUNNER_LABELS`: Comma-separated labels for runner selection (default: `linux`)
-- `RUNNER_GROUP`: Runner group name (default: `Default`)
-- `RUNNER_WORKDIR`: Working directory (default: `_work`)
-- `RUNNER_AS_ROOT`: Run as root (default: `false`)
-- `RUNNER_REPLACE_EXISTING`: Replace existing runner (default: `false`)
+### 📋 Quick Reference
+
+| Variable | Required | Purpose | Example | Default |
+|----------|----------|---------|---------|---------|
+| `GITHUB_TOKEN` | ✅ Yes | GitHub authentication | `ghp_xxxx...` | - |
+| `GITHUB_OWNER` | ✅ Yes (or repos) | Organization name | `my-org` | - |
+| `GITHUB_REPOSITORY` | ✅ Yes (or owner) | Repository (owner/repo) | `my-org/repo` | - |
+| `RUNNER_NAME` | ❌ No | Runner identifier | `prod-runner-01` | Auto-generated |
+| `RUNNER_LABELS` | ❌ No | Workflow targeting | `linux,python,ml` | `linux` |
+| `RUNNER_GROUP` | ❌ No | Access control group | `python-team` | `Default` |
+| `CPU_LIMIT` | ❌ No | CPU cores | `3.0` | `1.0` |
+| `MEMORY_LIMIT` | ❌ No | Memory limit | `6g` | `2g` |
+
+### 🎯 Complete Variable Reference
+
+#### **GitHub Configuration (REQUIRED)**
+
+**`GITHUB_TOKEN`**
+- **Purpose**: Authentication token for GitHub API access
+- **Format**: `ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` (Personal Access Token) or `github_pat_xxxxxxxx` (Fine-grained)
+- **Scopes Needed**:
+  - **Repository runners**: `repo` or `admin:org` (Classic) OR Repository/Actions permission (Fine-grained)
+  - **Organization runners**: `admin:org` (Classic) OR Organization/Actions permission (Fine-grained)
+- **Security**: Use fine-grained tokens with minimal permissions
+- **Rotation**: Recommended every 90 days
+- **Example**: `GITHUB_TOKEN=ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ123456789`
+- **Required**: ✅ Yes
+
+**`GITHUB_OWNER`** (Organization Runner - RECOMMENDED for multiple repos)
+- **Purpose**: Organization name for organization-level runner
+- **Use Case**: Single runner serves ALL repositories in the organization
+- **Benefits**: Easier maintenance, lower resource usage, one .env file
+- **Example**: `GITHUB_OWNER=my-organization`
+- **Required**: ✅ Yes (if using organization runner)
+
+**`GITHUB_REPOSITORY`** (Repository-Specific Runner)
+- **Purpose**: Target repository (owner/repo format)
+- **Use Case**: Dedicated runner for a specific repository
+- **Benefits**: Isolated environment, fine-grained control
+- **Example**: `GITHUB_REPOSITORY=my-organization/my-repository`
+- **Required**: ✅ Yes (if using repository-specific runner)
+
+#### **Runner Configuration (Optional)**
+
+**`RUNNER_NAME`**
+- **Purpose**: Unique identifier for this runner instance
+- **Default**: Auto-generated (e.g., `python-runner-01`)
+- **Best Practice**: Use descriptive names for easy identification
+- **Examples**:
+  - `org-python-runner-01` (organization)
+  - `prod-api-runner-01` (production API)
+  - `dev-django-runner` (development Django)
+- **Notes**: Should be unique across all runners
+
+**`RUNNER_LABELS`**
+- **Purpose**: Comma-separated labels for workflow targeting
+- **Default**: `linux`
+- **Format**: `label1,label2,label3` (no spaces after commas)
+- **How to use in workflows**:
+  ```yaml
+  jobs:
+    build:
+      runs-on: [self-hosted, linux, python, ml]  # Matches RUNNER_LABELS
+  ```
+- **Examples**:
+  - Basic Python: `linux,python`
+  - ML/AI: `linux,python,ml,ai,data-science`
+  - Production: `linux,python,production`
+  - Multi-language: `linux,python,node,go`
+- **Best Practice**: Use consistent labels across your organization
+
+**`RUNNER_GROUP`** (Organization Runners Only)
+- **Purpose**: Runner group for access control
+- **Default**: `Default`
+- **How to set up**: GitHub → Settings → Actions → Runner groups
+- **Use Cases**:
+  - Team-based access: `python-team`, `data-team`
+  - Environment-based: `production`, `staging`, `development`
+  - Project-based: `api-project`, `ml-project`
+- **Example**: `RUNNER_GROUP=python-team`
+
+**`RUNNER_WORKDIR`**
+- **Purpose**: Working directory for runner operations
+- **Default**: `_work` (relative to runner installation)
+- **Use Cases**:
+  - Custom storage: `/mnt/data/work`
+  - SSD optimization: `/ssd/work`
+  - Network storage: `/mnt/nfs/work`
+- **Example**: `RUNNER_WORKDIR=/mnt/data/work`
+
+**`RUNNER_AS_ROOT`**
+- **Purpose**: Run runner as root user (not recommended)
+- **Default**: `false`
+- **Security Warning**: Running as root increases security risk
+- **Use Case**: Rarely needed (legacy workflows requiring root)
+- **Example**: `RUNNER_AS_ROOT=false`
+
+**`RUNNER_REPLACE_EXISTING`**
+- **Purpose**: Replace existing runner with same name
+- **Default**: `false`
+- **Use Case**: Automated deployments (CI/CD)
+- **Warning**: Can disrupt running workflows
+- **Example**: `RUNNER_REPLACE_EXISTING=true`
+
+#### **Python-Specific Configuration (Optional)**
+
+These variables optimize Python development workflows:
+
+**`PYTHONUNBUFFERED`**
+- **Purpose**: Disable Python output buffering for real-time logs
+- **Default**: `1` (enabled)
+- **Recommended**: Always keep enabled for CI/CD
+- **Example**: `PYTHONUNBUFFERED=1`
+
+**`PYTHONDONTWRITEBYTECODE`**
+- **Purpose**: Prevent writing .pyc bytecode files
+- **Default**: `1` (enabled)
+- **Benefit**: Reduces disk I/O and storage usage
+- **Example**: `PYTHONDONTWRITEBYTECODE=1`
+
+**`PIP_NO_CACHE_DIR`**
+- **Purpose**: Disable pip package caching
+- **Default**: `off` (caching enabled)
+- **Recommended**: `off` for faster builds (cache is mounted in volumes)
+- **Example**: `PIP_NO_CACHE_DIR=off`
+
+**`PIP_DISABLE_PIP_VERSION_CHECK`**
+- **Purpose**: Disable pip version check
+- **Default**: `on` (disabled)
+- **Benefit**: Faster pip operations, no network call
+- **Example**: `PIP_DISABLE_PIP_VERSION_CHECK=on`
+
+**`VENV_PATH`**
+- **Purpose**: Virtual environment path location
+- **Default**: `/home/runner/.venv`
+- **Use Case**: Custom virtual environment location
+- **Example**: `VENV_PATH=/home/runner/.venv-ml`
+
+#### **Resource Limits (Docker Compose)**
+
+**`CPU_LIMIT`**
+- **Purpose**: CPU cores allocated to runner
+- **Default**: `1.0` (1 core)
+- **Can be fractional**: `0.5`, `1.5`, `2.5`
+- **Examples**:
+  - Light: `0.5` (testing)
+  - Medium: `1.5` (development)
+  - Heavy: `3.0` (ML/Data Science)
+- **Example**: `CPU_LIMIT=3.0`
+
+**`MEMORY_LIMIT`**
+- **Purpose**: Memory limit for runner container
+- **Default**: `2g`
+- **Formats**: `1g`, `2g`, `4g`, `8g`, `16g`
+- **Use Cases**:
+  - Basic Python: `2g`
+  - Web development: `4g`
+  - ML/Data Science: `6g-16g`
+  - Large models: `16g+`
+- **Example**: `MEMORY_LIMIT=6g`
+
+**`NETWORK_MODE`**
+- **Purpose**: Docker network mode
+- **Default**: `bridge`
+- **Options**: `bridge`, `host`, `none`
+- **Example**: `NETWORK_MODE=bridge`
+
+#### **Advanced Configuration**
+
+**`LOG_LEVEL`**
+- **Purpose**: Logging verbosity level
+- **Default**: `INFO`
+- **Options**: `DEBUG`, `INFO`, `WARN`, `ERROR`
+- **Use `DEBUG` for troubleshooting
+- **Example**: `LOG_LEVEL=INFO`
+
+**`HEALTH_CHECK_INTERVAL`**
+- **Purpose**: How often to check runner health
+- **Default**: `30s`
+- **Formats**: `30s`, `1m`, `5m`
+- **Example**: `HEALTH_CHECK_INTERVAL=30s`
+
+**`TIMEOUT_SECONDS`**
+- **Purpose**: API timeout for GitHub operations
+- **Default**: `30`
+- **Examples**: `30`, `60`, `120`
+- **Use longer timeouts for slow networks
+- **Example**: `TIMEOUT_SECONDS=30`
+
+### 📝 Complete Example `.env` Files
+
+#### **Example 1: Organization Runner (RECOMMENDED)**
+```bash
+# Single runner for all repositories in organization
+GITHUB_TOKEN=ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ123456789
+GITHUB_OWNER=my-organization
+RUNNER_NAME=org-python-runner-01
+RUNNER_LABELS=linux,python,ml,ai,production
+RUNNER_GROUP=python-team
+CPU_LIMIT=3.0
+MEMORY_LIMIT=6g
+PYTHONUNBUFFERED=1
+PYTHONDONTWRITEBYTECODE=1
+```
+
+**Usage in workflow:**
+```yaml
+jobs:
+  build:
+    runs-on: [self-hosted, linux, python, ml]  # Available to ALL repos in org
+```
+
+#### **Example 2: Repository-Specific Runner**
+```bash
+# Runner dedicated to one repository
+GITHUB_TOKEN=ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ123456789
+GITHUB_REPOSITORY=my-organization/api-server
+RUNNER_NAME=api-server-runner
+RUNNER_LABELS=linux,python,fastapi,api
+CPU_LIMIT=2.0
+MEMORY_LIMIT=4g
+```
+
+**Usage in workflow:**
+```yaml
+jobs:
+  build:
+    runs-on: [self-hosted, linux, python, fastapi, api]
+```
+
+#### **Example 3: Development/Testing**
+```bash
+# Development environment
+GITHUB_TOKEN=ghp_TEST_TOKEN_1234567890abcdef
+GITHUB_OWNER=dev-org
+RUNNER_NAME=dev-python-runner-01
+RUNNER_LABELS=linux,python,development,testing
+RUNNER_GROUP=dev-team
+RUNNER_REPLACE_EXISTING=true
+LOG_LEVEL=DEBUG
+CPU_LIMIT=1.5
+MEMORY_LIMIT=3g
+```
+
+#### **Example 4: ML/Data Science (High Resources)**
+```bash
+# ML/AI workloads
+GITHUB_TOKEN=ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ123456789
+GITHUB_OWNER=data-team-org
+RUNNER_NAME=ml-runner-gpu-01
+RUNNER_LABELS=linux,python,ml,ai,data-science,deep-learning,gpu,production
+RUNNER_GROUP=ml-team
+VENV_PATH=/home/runner/.venv-ml
+CPU_LIMIT=4.0
+MEMORY_LIMIT=16g
+PYTHONUNBUFFERED=1
+PYTHONDONTWRITEBYTECODE=1
+```
+
+### 🔒 Security Best Practices
+
+1. **Token Management**
+   - Use fine-grained tokens with minimal permissions
+   - Repository runners: `Actions` permission only
+   - Organization runners: `Actions` permission only
+   - Rotate tokens every 90 days
+
+2. **File Security**
+   ```bash
+   # Never commit .env files
+   echo ".env*" >> .gitignore
+
+   # Set secure permissions
+   chmod 600 .env
+   ```
+
+3. **Environment Variables in CI/CD**
+   ```yaml
+   # In GitHub Actions workflow
+   - name: Deploy runner
+     run: |
+       docker-compose -f docker-compose/linux-python.yml up -d \
+         -e GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }} \
+         -e GITHUB_OWNER=${{ github.repository_owner }}
+   ```
+
+4. **Docker Secrets (Production)**
+   ```bash
+   # Create Docker secrets
+   echo "ghp_xxxx" | docker secret create github_token -
+
+   # In docker-compose.yml
+   secrets:
+     - github_token
+   ```
+
+### 🚀 Deployment Commands
+
+**Standard deployment with .env file:**
+```bash
+# Copy template
+cp .env.template .env
+
+# Edit .env with your values
+# (Use nano, vim, or any editor)
+
+# Deploy
+docker-compose -f docker-compose/linux-python.yml up -d
+```
+
+**Custom .env file:**
+```bash
+docker-compose --env-file .env.prod -f docker-compose/linux-python.yml up -d
+```
+
+**No .env file (environment variables only):**
+```bash
+export GITHUB_TOKEN=ghp_xxxx
+export GITHUB_OWNER=my-org
+docker-compose -f docker-compose/linux-python.yml up -d
+```
+
+**Multiple runners (each with own .env):**
+```bash
+# Deploy multiple runners
+for env_file in .env.runner*; do
+  export $(cat $env_file | xargs)
+  docker-compose -f docker-compose/linux-python.yml up -d
+  unset $(cat $env_file | sed 's/=.*//' | xargs)
+done
+```
+
+### 🎯 Multiple Repository Management
+
+#### **Option A: Organization Runner (Recommended)**
+For multiple repositories with similar needs:
+- **Single .env file**
+- **Single runner deployment**
+- **All repos can use it** via labels
+
+```bash
+# .env
+GITHUB_TOKEN=ghp_xxxx
+GITHUB_OWNER=my-org
+RUNNER_NAME=org-runner
+
+# Deploy once
+docker-compose -f docker-compose/linux-python.yml up -d
+```
+
+#### **Option B: Multiple Repository-Specific Runners**
+For different requirements per repository:
+- **Multiple .env files** (one per repo)
+- **Multiple runner deployments** (one per repo)
+
+```bash
+# .env.repo1
+GITHUB_TOKEN=ghp_xxxx
+GITHUB_REPOSITORY=my-org/repo1
+RUNNER_NAME=repo1-runner
+
+# .env.repo2
+GITHUB_TOKEN=ghp_xxxx
+GITHUB_REPOSITORY=my-org/repo2
+RUNNER_NAME=repo2-runner
+
+# Deploy multiple
+docker-compose --env-file .env.repo1 -f docker-compose/linux-python.yml up -d
+docker-compose --env-file .env.repo2 -f docker-compose/linux-python.yml up -d
+```
+
+#### **Option C: Environment Variables Only (CI/CD)**
+No .env files needed:
+```bash
+# In CI/CD pipeline
+docker-compose -f docker-compose/linux-python.yml up -d \
+  -e GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }} \
+  -e GITHUB_OWNER=${{ github.repository_owner }} \
+  -e RUNNER_NAME=ci-runner-${{ github.run_id }}
+```
+
+### ❓ Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| **"Environment variable is required"** | Check .env file exists and variable names are correct (case-sensitive) |
+| **Runner not appearing in GitHub** | Check token permissions: `curl -H "Authorization: token ${GITHUB_TOKEN}" https://api.github.com/user/repos` |
+| **Out of memory errors** | Increase `MEMORY_LIMIT` (e.g., `MEMORY_LIMIT=8g`) |
+| **Slow builds** | Enable pip cache: `PIP_NO_CACHE_DIR=off` and verify volume mounts |
+| **Permission denied** | Ensure `RUNNER_AS_ROOT=false` (recommended) |
+| **Port already in use** | Change container name or stop conflicting services |
+| **Token expired** | Generate new token and update `GITHUB_TOKEN` |
+
+### 📊 Variable Summary by Use Case
+
+| Use Case | Key Variables | Typical Values |
+|----------|--------------|----------------|
+| **Organization Runner** | `GITHUB_OWNER`, `RUNNER_NAME`, `RUNNER_LABELS` | `my-org`, `org-runner-01`, `linux,python,ml` |
+| **Repository Runner** | `GITHUB_REPOSITORY`, `RUNNER_NAME`, `RUNNER_LABELS` | `my-org/repo`, `repo-runner`, `linux,python` |
+| **ML/Data Science** | `CPU_LIMIT`, `MEMORY_LIMIT`, `VENV_PATH` | `4.0`, `16g`, `/home/runner/.venv-ml` |
+| **Development** | `LOG_LEVEL`, `RUNNER_REPLACE_EXISTING` | `DEBUG`, `true` |
+| **Production** | `RUNNER_GROUP`, `RUNNER_LABELS`, `CPU_LIMIT` | `production-team`, `linux,python,prod`, `2.0` |
+
+### 📖 Related Documentation
+
+- **Full Template**: See `.env.template` for all available variables
+- **Quick Start**: `docs/linux-modular/quick-start.md`
+- **Migration Guide**: `docs/linux-modular/migration.md`
+- **Performance**: `docs/linux-modular/performance.md`
 
 ## 📊 Performance Comparison
 
