@@ -127,7 +127,19 @@ ENV PUB_CACHE=/opt/flutter/.pub-cache
 
 # Install Flet Python package and Flutter packages
 # Flet SDK for building cross-platform apps
-RUN pip install --no-cache-dir flet==0.22.0 repath
+RUN pip install --no-cache-dir flet==0.22.0 && \
+    echo "=== Installed packages ===" && \
+    pip show flet && \
+    echo "=== Python path ===" && \
+    python3 -c "import sys; print('\n'.join(sys.path))" && \
+    echo "=== Directory contents ===" && \
+    ls -la /usr/local/lib/python3.10/ || true && \
+    ls -la /usr/local/lib/python3.10/site-packages/ || true && \
+    ls -la /usr/local/lib/python3.10/dist-packages/ || true && \
+    echo "=== Checking flet package location ===" && \
+    python3 -c "import flet, os; print(f'flet location: {os.path.dirname(flet.__file__)}')" && \
+    python3 -c "import flet_core, os; print(f'flet_core location: {os.path.dirname(flet_core.__file__)}')" && \
+    python3 -c "import flet_runtime, os; print(f'flet_runtime location: {os.path.dirname(flet_runtime.__file__)}')" || echo "Some imports failed"
 
 # Create directories and set permissions
 RUN mkdir -p /opt/flutter/.pub-cache && \
@@ -144,7 +156,8 @@ USER root
 
 # Verify installations
 USER runner
-RUN python3 --version && \
+RUN git config --global --add safe.directory /opt/flutter && \
+    python3 --version && \
     pip3 --version && \
     flutter --version && \
     dart --version && \

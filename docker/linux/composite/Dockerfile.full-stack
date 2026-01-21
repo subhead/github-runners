@@ -45,7 +45,7 @@ COPY --from=gh-runner:flutter-pack /opt/flutter /opt/flutter
 COPY --from=gh-runner:flutter-pack /opt/android-sdk /opt/android-sdk
 COPY --from=gh-runner:flutter-pack /usr/lib/x86_64-linux-gnu/ /usr/lib/x86_64-linux-gnu/
 
-# Copy Flet packages (Ubuntu uses dist-packages, not site-packages)
+# Copy Flet packages
 COPY --from=gh-runner:flet-pack /usr/local/lib/python3.10/dist-packages/flet /usr/local/lib/python3.10/dist-packages/flet
 COPY --from=gh-runner:flet-pack /usr/local/lib/python3.10/dist-packages/flet_core /usr/local/lib/python3.10/dist-packages/flet_core
 COPY --from=gh-runner:flet-pack /usr/local/lib/python3.10/dist-packages/flet_runtime /usr/local/lib/python3.10/dist-packages/flet_runtime
@@ -80,11 +80,17 @@ RUN git config --global --add safe.directory /opt/flutter && \
     node --version && \
     npm --version && \
     yarn --version && \
-    go version && \
+    go version
+
+# Verify Flutter/Dart installations as runner user (to avoid root warning)
+USER runner
+# Configure git safe directory for runner user (to avoid ownership errors)
+RUN git config --global --add safe.directory /opt/flutter && \
     flutter --version && \
     dart --version && \
     python3 -c "import flet; print(f'Flet installed successfully')" && \
     pip3 show flet | grep Version
+USER root
 
 # Environment variables for all stacks
 ENV BUILD_STACK=full \

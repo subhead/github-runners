@@ -21,7 +21,9 @@ COPY --from=gh-runner:flutter-pack /opt/android-sdk /opt/android-sdk
 COPY --from=gh-runner:flutter-pack /usr/lib/x86_64-linux-gnu/ /usr/lib/x86_64-linux-gnu/
 
 # Copy Flet packages from Flet pack
-COPY --from=gh-runner:flet-pack /usr/local/lib/python3.10/site-packages/flet /usr/local/lib/python3.10/site-packages/flet
+COPY --from=gh-runner:flet-pack /usr/local/lib/python3.10/dist-packages/flet /usr/local/lib/python3.10/dist-packages/flet
+COPY --from=gh-runner:flet-pack /usr/local/lib/python3.10/dist-packages/flet_core /usr/local/lib/python3.10/dist-packages/flet_core
+COPY --from=gh-runner:flet-pack /usr/local/lib/python3.10/dist-packages/flet_runtime /usr/local/lib/python3.10/dist-packages/flet_runtime
 
 # Create symlinks for Python, Flutter, and Dart
 RUN ln -sf /usr/bin/python3 /usr/bin/python && \
@@ -44,7 +46,8 @@ RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub 2>/dev/nu
     rm -rf /var/lib/apt/lists/*
 
 # Verify all installations
-RUN python3 --version && \
+RUN git config --global --add safe.directory /opt/flutter && \
+    python3 --version && \
     pip3 --version && \
     flutter --version && \
     dart --version && \
