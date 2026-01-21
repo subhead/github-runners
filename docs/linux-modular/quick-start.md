@@ -67,19 +67,25 @@ Based on your project needs, pick one:
 
 | Project Type | Recommended Runner | Command |
 |--------------|-------------------|---------|
-| **C/C++ Project** | `linux-cpp.yml` | `docker-compose -f docker-compose/linux-cpp.yml up -d` |
-| **Python Project** | `linux-python.yml` | `docker-compose -f docker-compose/linux-python.yml up -d` |
-| **Web Project (Node.js/Go)** | `linux-web.yml` | `docker-compose -f docker-compose/linux-web.yml up -d` |
-| **Multiple Languages** | `linux-full.yml` | `docker-compose -f docker-compose/linux-full.yml up -d` |
-| **Just Basics** | `linux-base.yml` | `docker-compose -f docker-compose/linux-base.yml up -d` |
+| **C/C++ Project** | `linux-cpp.yml` | `docker-compose --env-file .env -f docker-compose/linux-cpp.yml up -d` |
+| **Python Project** | `linux-python.yml` | `docker-compose --env-file .env -f docker-compose/linux-python.yml up -d` |
+| **Web Project (Node.js/Go)** | `linux-web.yml` | `docker-compose --env-file .env -f docker-compose/linux-web.yml up -d` |
+| **Multiple Languages** | `linux-full.yml` | `docker-compose --env-file .env -f docker-compose/linux-full.yml up -d` |
+| **Just Basics** | `linux-base.yml` | `docker-compose --env-file .env -f docker-compose/linux-base.yml up -d` |
 
 ### Step 4: Build and Deploy
 
 **Using Docker Compose (Recommended)**:
 
 ```bash
-# Build and start the runner
-docker-compose -f docker-compose/linux-cpp.yml up -d
+# Build and start the runner (from root directory)
+docker-compose --env-file .env -f docker-compose/linux-cpp.yml up -d
+
+# Or if you prefer, navigate to docker-compose directory first:
+cd docker-compose
+cp ../.env .
+# Edit .env then:
+docker-compose -f linux-cpp.yml up -d
 ```
 
 **Manual Build** (if you prefer):
@@ -109,7 +115,7 @@ docker run -d \
 
 ```bash
 # View logs
-docker-compose -f docker-compose/linux-cpp.yml logs -f
+docker-compose --env-file .env -f docker-compose/linux-cpp.yml logs -f
 
 # Or for manual deployment
 docker logs -f cpp-runner
@@ -207,7 +213,7 @@ jobs:
 
 **Setup**:
 ```bash
-docker-compose -f docker-compose/linux-cpp.yml up -d
+docker-compose --env-file .env -f docker-compose/linux-cpp.yml up -d
 ```
 
 **Test workflow**:
@@ -227,7 +233,7 @@ jobs:
 
 **Setup**:
 ```bash
-docker-compose -f docker-compose/linux-python.yml up -d
+docker-compose --env-file .env -f docker-compose/linux-python.yml up -d
 ```
 
 **Test workflow**:
@@ -247,7 +253,7 @@ jobs:
 
 **Setup**:
 ```bash
-docker-compose -f docker-compose/linux-web.yml up -d
+docker-compose --env-file .env -f docker-compose/linux-web.yml up -d
 ```
 
 **Test workflow**:
@@ -303,7 +309,7 @@ services:
 ### Problem: Runner not appearing in GitHub
 
 **Solution**:
-1. Check logs: `docker-compose -f docker-compose/linux-cpp.yml logs`
+1. Check logs: `docker-compose --env-file .env -f docker-compose/linux-cpp.yml logs`
 2. Verify environment variables are set
 3. Check network connectivity
 4. Ensure GitHub Actions service is available
@@ -347,8 +353,8 @@ docker stats
 ### 2. Scale Your Runners
 ```bash
 # Add more runners for parallel builds
-docker-compose -f docker-compose/linux-cpp.yml up -d cpp-runner-01
-docker-compose -f docker-compose/linux-cpp.yml up -d cpp-runner-02
+docker-compose --env-file .env -f docker-compose/linux-cpp.yml up -d cpp-runner-01
+docker-compose --env-file .env -f docker-compose/linux-cpp.yml up -d cpp-runner-02
 ```
 
 ### 3. Integrate with Your CI/CD
@@ -373,10 +379,10 @@ jobs:
 
 ```bash
 # Start runner
-docker-compose -f docker-compose/linux-cpp.yml up -d
+docker-compose --env-file .env -f docker-compose/linux-cpp.yml up -d
 
 # View logs
-docker-compose -f docker-compose/linux-cpp.yml logs -f
+docker-compose --env-file .env -f docker-compose/linux-cpp.yml logs -f
 
 # Stop runner
 docker-compose -f docker-compose/linux-cpp.yml down
@@ -389,7 +395,7 @@ docker stats cpp-runner
 
 # Update runner
 docker-compose -f docker-compose/linux-cpp.yml build --no-cache
-docker-compose -f docker-compose/linux-cpp.yml up -d
+docker-compose --env-file .env -f docker-compose/linux-cpp.yml up -d
 ```
 
 ### Docker Compose Files

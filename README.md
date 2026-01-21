@@ -107,13 +107,13 @@ Based on your project needs:
 
 | Project Type | Command | Size | Build Time |
 |--------------|---------|------|------------|
-| **C/C++** | `docker-compose -f docker-compose/linux-cpp.yml up -d` | 550MB | ~3 min |
-| **Python/ML** | `docker-compose -f docker-compose/linux-python.yml up -d` | 450MB | ~2.5 min |
-| **Web (Node+Go)** | `docker-compose -f docker-compose/linux-web.yml up -d` | 580MB | ~3.5 min |
-| **Flutter** | `docker-compose -f docker-compose/linux-flutter.yml up -d` | 2.3GB | ~5 min |
-| **Flet (Python→Flutter)** | `docker-compose -f docker-compose/linux-flet.yml up -d` | 3.8GB | ~6 min |
-| **Multiple Langs** | `docker-compose -f docker-compose/linux-full.yml up -d` | 2.5GB | ~8 min |
-| **Minimal** | `docker-compose -f docker-compose/linux-base.yml up -d` | 300MB | ~2 min |
+| **C/C++** | `docker-compose --env-file .env -f docker-compose/linux-cpp.yml up -d` | 550MB | ~3 min |
+| **Python/ML** | `docker-compose --env-file .env -f docker-compose/linux-python.yml up -d` | 450MB | ~2.5 min |
+| **Web (Node+Go)** | `docker-compose --env-file .env -f docker-compose/linux-web.yml up -d` | 580MB | ~3.5 min |
+| **Flutter** | `docker-compose --env-file .env -f docker-compose/linux-flutter.yml up -d` | 2.3GB | ~5 min |
+| **Flet (Python→Flutter)** | `docker-compose --env-file .env -f docker-compose/linux-flet.yml up -d` | 3.8GB | ~6 min |
+| **Multiple Langs** | `docker-compose --env-file .env -f docker-compose/linux-full.yml up -d` | 2.5GB | ~8 min |
+| **Minimal** | `docker-compose --env-file .env -f docker-compose/linux-base.yml up -d` | 300MB | ~2 min |
 
 ### Step 4: Verify in GitHub
 
@@ -557,8 +557,14 @@ cp .env.template .env
 # Edit .env with your values
 # (Use nano, vim, or any editor)
 
-# Deploy
-docker-compose -f docker-compose/linux-python.yml up -d
+# Deploy (from root directory)
+docker-compose --env-file .env -f docker-compose/linux-python.yml up -d
+
+# Alternative: Navigate to docker-compose directory first
+cd docker-compose
+cp ../.env.template .env
+# Edit .env then:
+docker-compose -f linux-python.yml up -d
 ```
 
 **Custom .env file:**
@@ -570,7 +576,7 @@ docker-compose --env-file .env.prod -f docker-compose/linux-python.yml up -d
 ```bash
 export GITHUB_TOKEN=ghp_xxxx
 export GITHUB_OWNER=my-org
-docker-compose -f docker-compose/linux-python.yml up -d
+docker-compose --env-file .env -f docker-compose/linux-python.yml up -d
 ```
 
 **Multiple runners (each with own .env):**
@@ -578,7 +584,7 @@ docker-compose -f docker-compose/linux-python.yml up -d
 # Deploy multiple runners
 for env_file in .env.runner*; do
   export $(cat $env_file | xargs)
-  docker-compose -f docker-compose/linux-python.yml up -d
+  docker-compose --env-file .env -f docker-compose/linux-python.yml up -d
   unset $(cat $env_file | sed 's/=.*//' | xargs)
 done
 ```
@@ -597,8 +603,8 @@ GITHUB_TOKEN=ghp_xxxx
 GITHUB_OWNER=my-org
 RUNNER_NAME=org-runner
 
-# Deploy once
-docker-compose -f docker-compose/linux-python.yml up -d
+# Deploy once (from root directory)
+docker-compose --env-file .env -f docker-compose/linux-python.yml up -d
 ```
 
 #### **Option B: Multiple Repository-Specific Runners**

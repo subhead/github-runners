@@ -140,13 +140,13 @@ Based on your needs, select one of the following:
 
 ```bash
 # Build and start C++ runner
-docker-compose -f docker-compose/linux-cpp.yml up -d
+docker-compose --env-file .env -f docker-compose/linux-cpp.yml up -d
 
 # Build and start Python runner
-docker-compose -f docker-compose/linux-python.yml up -d
+docker-compose --env-file .env -f docker-compose/linux-python.yml up -d
 
 # Build and start Web runner
-docker-compose -f docker-compose/linux-web.yml up -d
+docker-compose --env-file .env -f docker-compose/linux-web.yml up -d
 ```
 
 **Option B: Manual Build**
@@ -383,8 +383,8 @@ grep -r "runs-on:" .github/workflows/ | sort | uniq
 **Phase 2: Deploy Modular Runners**
 ```bash
 # Deploy new runners alongside existing ones
-docker-compose -f docker-compose/linux-cpp.yml up -d
-docker-compose -f docker-compose/linux-python.yml up -d
+docker-compose --env-file .env -f docker-compose/linux-cpp.yml up -d
+docker-compose --env-file .env -f docker-compose/linux-python.yml up -d
 ```
 
 **Phase 3: Update Workflows**
