@@ -1,0 +1,60 @@
+# docker/linux/base/Dockerfile.base
+# Minimal base image for GitHub Actions runners on Linux
+# Size: ~300MB (Ubuntu 22.04 minimal + runner agent)
+
+FROM ubuntu:22.04 AS base
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Update apt and install minimal dependencies
+# These are essential for GitHub Actions runner and basic operations
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    git \
+    tar \
+    zip \
+    unzip \
+    jq \
+    gnupg \
+    software-properties-common \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install GitHub Actions runner
+ARG RUNNER_VERSION=2.32.0
+RUN mkdir -p /actions-runner && \
+    curl -o /tmp/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz \
+    -L https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz && \
+    tar xzf /tmp/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz -C /actions-runner && \
+    rm /tmp/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz
+
+# Create runner user with appropriate permissions
+RUN useradd -m -u 1001 -s /bin/bash runner && \
+    usermod -aG sudo runner && \
+    echo "runner ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# Set up runner directory
+RUN mkdir -p /actions-runner && \
+    chown -R runner:runner /actions-runner
+
+WORKDIR /actions-runner
+USER runner
+
+# Copy entrypoint script
+COPY --chown=runner:runner entrypoint/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Environment variables
+ENV RUNNER_ALLOW_RUNASROOT=1
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/actions-runner
+
+# Labels for better image metadata
+LABEL org.opencontainers.image.source="https://github.com/cicd/github-runner" \
+      org.opencontainers.image.description="Minimal GitHub Actions runner base image for Linux" \
+      org.opencontainers.image.vendor="CI/CD Team" \
+      org.opencontainers.image.version="1.0.0" \
+      org.opencontainers.image.base.name="ubuntu:22.04"
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["--help"]

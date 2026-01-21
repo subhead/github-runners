@@ -1,0 +1,116 @@
+# docker-compose/linux-base.yml
+# Base GitHub Actions runner configuration
+# Minimal runner with no language-specific tools
+
+version: '3.8'
+
+networks:
+  github-runners:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+services:
+  base-runner:
+    # Build the base image
+    build:
+      context: ../
+      dockerfile: docker/linux/base/Dockerfile.base
+      args:
+        RUNNER_VERSION: 2.32.0
+    image: gh-runner:linux-base
+    container_name: github-base-runner
+    hostname: base-runner
+
+    # Resource limits for base runner (minimal)
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+    # Memory and CPU limits
+    mem_limit: 1g
+    mem_reservation: 512m
+    cpus: '1.0'
+    cpu_shares: 512
+
+    # Environment variables (REQUIRED)
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN:?ERROR: GITHUB_TOKEN environment variable is required}
+      - GITHUB_REPOSITORY=${GITHUB_REPOSITORY:?ERROR: GITHUB_REPOSITORY environment variable is required}
+      - RUNNER_NAME=${RUNNER_NAME:-base-runner-01}
+      - RUNNER_LABELS=${RUNNER_LABELS:-linux,base,minimal}
+      - RUNNER_GROUP=${RUNNER_GROUP:-Default}
+      - RUNNER_WORKDIR=${RUNNER_WORKDIR:-_work}
+      - RUNNER_AS_ROOT=${RUNNER_AS_ROOT:-false}
+      - RUNNER_REPLACE_EXISTING=${RUNNER_REPLACE_EXISTING:-false}
+
+    # Volumes
+    volumes:
+      # Docker socket for container builds (read-only for security)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+      # Persistent runner data
+      - ./data/base-runner:/actions-runner
+
+      # Optional: Source code mounting for local development
+      # - /path/to/your/project:/workspace:ro
+
+    # Network configuration
+    networks:
+      - github-runners
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service"
+        env: "os,customer"
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"] || ["CMD", "pgrep", "run.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    # Labels for monitoring
+    labels:
+      - "service=github-runner"
+      - "language=base"
+      - "role=runner"
+      - "environment=production"
+
+    # User configuration
+    user: "1001:1001"
+
+    # Depends on
+    depends_on:
+      - # Add any dependencies if needed
+
+# Profile for selective deployment
+# profiles:
+#   - base
+#   - minimal
+#   - github

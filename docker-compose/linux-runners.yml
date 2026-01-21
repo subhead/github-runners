@@ -1,0 +1,242 @@
+# Docker Compose Configuration for Linux GitHub Actions Runners
+# This file defines services for both action and build runners
+#
+# Prerequisites:
+# 1. GitHub Personal Access Token with repo scope
+# 2. Docker installed on the host
+# 3. Docker Compose installed
+#
+# Usage:
+#   export GITHUB_TOKEN=your_token
+#   export GITHUB_REPOSITORY=owner/repo
+#   docker-compose -f docker-compose/linux-runners.yml up -d
+#
+# To view logs:
+#   docker-compose -f docker-compose/linux-runners.yml logs -f
+#
+# To stop:
+#   docker-compose -f docker-compose/linux-runners.yml down
+
+version: '3.8'
+
+x-runner-common: &runner-common
+  # Common settings for all runners
+  restart: unless-stopped
+  env_file:
+    - .env  # Optional: Load environment variables from file
+  # Security options - Uncomment for production
+  # security_opt:
+  #   - no-new-privileges:true
+  # cap_drop:
+  #   - ALL
+  # read_only: true
+
+services:
+  # ==============================
+  # Action Runner (Lightweight)
+  # ==============================
+  # Self-hosted GitHub Actions runner for running jobs
+  # Image size: ~600MB
+  # Use cases: Running CI/CD jobs, tests, deployments
+  gh-runner:
+    <<: *runner-common
+    build:
+      context: .
+      dockerfile: docker/linux/Dockerfile.action-runner
+      args:
+        - RUNNER_VERSION=2.32.0
+        - UBUNTU_VERSION=22.04
+    container_name: github-action-runner
+    image: gh-runner:linux-action
+    environment:
+      # Required: GitHub token for authentication
+      # Format: ghp_xxxxxxxx (classic) or ghs_xxxxxxxx (fine-grained)
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      # Required: Repository in format owner/repo
+      # For organization runners, use organization name
+      - GITHUB_REPOSITORY=${GITHUB_REPOSITORY}
+      # Optional: Custom runner name (defaults to hostname)
+      - RUNNER_NAME=${RUNNER_NAME:-linux-action-runner-1}
+      # Optional: Comma-separated labels for runner selection
+      - RUNNER_LABELS=${RUNNER_LABELS:-linux,action,runner}
+      # Optional: Runner group (enterprise feature)
+      - RUNNER_GROUP=${RUNNER_GROUP:-default}
+      # Optional: Additional configuration
+      - CLEANUP_EXISTING=${CLEANUP_EXISTING:-false}
+      - FORCE_RECONFIGURE=${FORCE_RECONFIGURE:-false}
+      # Optional: Enable Docker socket mounting for Docker-in-Docker
+      - INSTALL_DOCKER=${INSTALL_DOCKER:-false}
+    volumes:
+      # Required for Docker-in-Docker builds
+      # WARNING: This grants container access to host Docker daemon
+      # Only mount if you need to run Docker commands inside the runner
+      # - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Optional: Mount for persistent cache
+      # - github-runner-cache:/home/runner/.cache
+    networks:
+      - github-runners
+    # Resource limits (adjust based on your host resources)
+    mem_limit: 2g
+    cpus: '1.0'
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "github-runner.type=action"
+      - "github-runner.platform=linux"
+
+  # ==============================
+  # Build Runner (Comprehensive)
+  # ==============================
+  # Full-featured build environment with toolchains
+  # Image size: ~2.5GB
+  # Use cases: Building applications, compiling code, packaging
+  gh-build-runner:
+    <<: *runner-common
+    build:
+      context: .
+      dockerfile: docker/linux/Dockerfile.build-runner
+      args:
+        - RUNNER_VERSION=2.32.0
+        - UBUNTU_VERSION=22.04
+    container_name: github-build-runner
+    image: gh-runner:linux-build
+    environment:
+      # Required: GitHub token for authentication
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      # Required: Repository in format owner/repo
+      - GITHUB_REPOSITORY=${GITHUB_REPOSITORY}
+      # Optional: Custom runner name (defaults to hostname)
+      - RUNNER_NAME=${RUNNER_NAME:-linux-build-runner-1}
+      # Optional: Comma-separated labels for runner selection
+      - RUNNER_LABELS=${RUNNER_LABELS:-linux,build,docker,node,java,python,dotnet,rust,go}
+      # Optional: Runner group
+      - RUNNER_GROUP=${RUNNER_GROUP:-default}
+      # Optional: Additional configuration
+      - CLEANUP_EXISTING=${CLEANUP_EXISTING:-false}
+      - FORCE_RECONFIGURE=${FORCE_RECONFIGURE:-false}
+      # Docker-in-Docker is required for build runner
+      - INSTALL_DOCKER=${INSTALL_DOCKER:-true}
+    volumes:
+      # Required for Docker-in-Docker builds
+      # WARNING: This grants container access to host Docker daemon
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Optional: Mount for persistent build cache
+      # - build-cache:/home/runner/.cache
+      # - npm-cache:/home/runner/.npm
+      # - maven-cache:/home/runner/.m2
+      # - cargo-cache:/home/runner/.cargo
+    networks:
+      - github-runners
+    # Resource limits (build runner needs more resources)
+    mem_limit: 4g
+    cpus: '2.0'
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s  # Longer startup time for build runner
+    labels:
+      - "github-runner.type=build"
+      - "github-runner.platform=linux"
+
+  # ==============================
+  # Secondary Action Runner
+  # ==============================
+  # For scaling - runs multiple instances
+  gh-runner-2:
+    <<: *runner-common
+    build:
+      context: .
+      dockerfile: docker/linux/Dockerfile.action-runner
+      args:
+        - RUNNER_VERSION=2.32.0
+    container_name: github-action-runner-2
+    image: gh-runner:linux-action
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_REPOSITORY=${GITHUB_REPOSITORY}
+      - RUNNER_NAME=${RUNNER_NAME:-linux-action-runner-2}
+      - RUNNER_LABELS=${RUNNER_LABELS:-linux,action,runner}
+      - RUNNER_GROUP=${RUNNER_GROUP:-default}
+    volumes:
+      # Uncomment if needed
+      # - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - github-runners
+    mem_limit: 2g
+    cpus: '1.0'
+    depends_on:
+      - gh-runner
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ==============================
+  # Third Action Runner (Example)
+  # ==============================
+  gh-runner-3:
+    <<: *runner-common
+    build:
+      context: .
+      dockerfile: docker/linux/Dockerfile.action-runner
+      args:
+        - RUNNER_VERSION=2.32.0
+    container_name: github-action-runner-3
+    image: gh-runner:linux-action
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_REPOSITORY=${GITHUB_REPOSITORY}
+      - RUNNER_NAME=${RUNNER_NAME:-linux-action-runner-3}
+      - RUNNER_LABELS=${RUNNER_LABELS:-linux,action,runner}
+      - RUNNER_GROUP=${RUNNER_GROUP:-default}
+    volumes:
+      # Uncomment if needed
+      # - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - github-runners
+    mem_limit: 2g
+    cpus: '1.0'
+    depends_on:
+      - gh-runner
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+# ==============================
+# Network Configuration
+# ==============================
+networks:
+  github-runners:
+    driver: bridge
+    # Uncomment for better security/isolation
+    # driver_opts:
+    #   com.docker.network.bridge.name: github-runners
+
+# ==============================
+# Volumes (Optional)
+# ==============================
+# volumes:
+#   # Cache volumes for persistent data
+#   github-runner-cache:
+#     driver: local
+#   build-cache:
+#     driver: local
+#   npm-cache:
+#     driver: local
+#   maven-cache:
+#     driver: local
+#   cargo-cache:
+#     driver: local

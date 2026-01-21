@@ -1,0 +1,41 @@
+# docker/linux/composite/Dockerfile.cpp-only
+# C++ only runner - minimal image for C/C++ development
+# Size: ~550MB (Base 300MB + C++ pack 250MB)
+
+FROM gh-runner:linux-base
+
+# Copy C++ toolchain from the C++ pack
+COPY --from=gh-runner:cpp-pack /usr/bin/ /usr/bin/
+COPY --from=gh-runner:cpp-pack /usr/lib/ /usr/lib/
+COPY --from=gh-runner:cpp-pack /usr/include/ /usr/include/
+COPY --from=gh-runner:cpp-pack /usr/local/bin/ /usr/local/bin/
+COPY --from=gh-runner:cpp-pack /usr/local/include/ /usr/local/include/
+COPY --from=gh-runner:cpp-pack /usr/local/lib/ /usr/local/lib/
+
+# Copy configuration files
+COPY --from=gh-runner:cpp-pack /etc/alternatives /etc/alternatives
+COPY --from=gh-runner:cpp-pack /etc/ld.so.conf.d /etc/ld.so.conf.d
+
+# Verify C++ tools
+RUN gcc --version && \
+    g++ --version && \
+    clang --version && \
+    cmake --version && \
+    make --version
+
+# Environment variables for C++ development
+ENV BUILD_TOOLCHAIN=c++ \
+    CPP_ENV=enabled \
+    CC=/usr/bin/gcc \
+    CXX=/usr/bin/g++ \
+    CMAKE_C_COMPILER=gcc \
+    CMAKE_CXX_COMPILER=g++
+
+# Labels
+LABEL org.opencontainers.image.description="C++ only GitHub Actions runner" \
+      org.opencontainers.image.version="1.0.0" \
+      org.opencontainers.image.tags="c++,cpp,gcc,clang,cmake,make" \
+      org.opencontainers.image.size="~550MB"
+
+USER runner
+WORKDIR /actions-runner

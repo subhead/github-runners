@@ -1,0 +1,47 @@
+# docker/linux/composite/Dockerfile.python-only
+# Python only runner - for Python/Django/Flask/ML development
+# Size: ~450MB (Base 300MB + Python pack 150MB)
+
+FROM gh-runner:linux-base
+
+# Copy Python toolchain from the Python pack
+COPY --from=gh-runner:python-pack /usr/bin/python3 /usr/bin/python3
+COPY --from=gh-runner:python-pack /usr/bin/python3.10 /usr/bin/python3.10
+COPY --from=gh-runner:python-pack /usr/bin/python3.10-config /usr/bin/python3.10-config
+COPY --from=gh-runner:python-pack /usr/local/bin/pip3 /usr/local/bin/pip3
+COPY --from=gh-runner:python-pack /usr/local/bin/pip /usr/local/bin/pip
+COPY --from=gh-runner:python-pack /usr/local/bin/activate /usr/local/bin/activate 2>/dev/null || true
+
+# Copy Python libraries
+COPY --from=gh-runner:python-pack /usr/lib/python3.10 /usr/lib/python3.10
+COPY --from=gh-runner:python-pack /usr/local/lib/python3.10 /usr/local/lib/python3.10
+COPY --from=gh-runner:python-pack /opt/venv /opt/venv
+
+# Copy Python configuration
+COPY --from=gh-runner:python-pack /etc/alternatives/python3 /etc/alternatives/python3
+COPY --from=gh-runner:python-pack /etc/alternatives/python3-config /etc/alternatives/python3-config
+
+# Create symlink for python
+RUN ln -sf /usr/bin/python3 /usr/bin/python
+
+# Verify Python installation
+RUN python3 --version && \
+    pip3 --version && \
+    python -c "import sys; print(f'Python {sys.version}')"
+
+# Environment variables for Python development
+ENV BUILD_STACK=python \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=off \
+    PIP_DISABLE_PIP_VERSION_CHECK=on \
+    PATH="/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin:/home/runner/.local/bin:${PATH}"
+
+# Labels
+LABEL org.opencontainers.image.description="Python only GitHub Actions runner" \
+      org.opencontainers.image.version="1.0.0" \
+      org.opencontainers.image.tags="python,python3,django,flask,ml,ai,data-science" \
+      org.opencontainers.image.size="~450MB"
+
+USER runner
+WORKDIR /actions-runner

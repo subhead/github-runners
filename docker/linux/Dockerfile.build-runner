@@ -1,0 +1,257 @@
+# GitHub Actions Runner - Build Runner
+# Comprehensive build environment with toolchains and language runtimes
+# Optimized for building applications across multiple platforms
+
+ARG UBUNTU_VERSION=22.04
+FROM ubuntu:${UBUNTU_VERSION} AS base
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install core dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    wget \
+    git \
+    tar \
+    zip \
+    unzip \
+    gnupg \
+    lsb-release \
+    software-properties-common \
+    jq \
+    build-essential \
+    make \
+    cmake \
+    autoconf \
+    automake \
+    libtool \
+    pkg-config \
+    # Version control
+    git \
+    # C/C++ toolchain
+    gcc \
+    g++ \
+    clang \
+    llvm \
+    # SSL/TLS
+    libssl-dev \
+    libcurl4-openssl-dev \
+    # Compression
+    zlib1g-dev \
+    libbz2-dev \
+    liblzma-dev \
+    # System libraries
+    libreadline-dev \
+    libsqlite3-dev \
+    libncurses5-dev \
+    libncursesw5-dev \
+    # Graphics
+    libjpeg-dev \
+    libpng-dev \
+    libfreetype6-dev \
+    # XML/JSON
+    libxml2-dev \
+    libxslt1-dev \
+    libjson-c-dev \
+    # Network
+    libssh2-1-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Docker CLI (for Docker-in-Docker builds)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    docker.io \
+    && rm -rf /var/lib/apt/lists/*
+
+# ===== LANGUAGE RUNTIMES =====
+
+# Python 3 (with pip and venv)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-venv \
+    python3-dev \
+    python3-wheel \
+    && rm -rf /var/lib/apt/lists/* \
+    && python3 -m pip install --upgrade pip setuptools wheel
+
+# Node.js 20 LTS (via NodeSource)
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && node --version \
+    && npm --version \
+    && rm -rf /var/lib/apt/lists/*
+
+# Java 17 (LTS)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openjdk-17-jdk \
+    openjdk-17-jre \
+    && rm -rf /var/lib/apt/lists/* \
+    && java -version
+
+# .NET SDK 8.0
+RUN wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb \
+    && dpkg -i packages-microsoft-prod.deb \
+    && rm packages-microsoft-prod.deb \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    dotnet-sdk-8.0 \
+    aspnetcore-runtime-8.0 \
+    && rm -rf /var/lib/apt/lists/* \
+    && dotnet --version
+
+# Rust (via rustup)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
+    && . "$HOME/.cargo/env" \
+    && rustup default stable \
+    && rustup component add rustfmt clippy \
+    && rustc --version \
+    && cargo --version
+
+# Go 1.22
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    golang-go \
+    && rm -rf /var/lib/apt/lists/* \
+    && go version
+
+# PHP 8.2
+RUN add-apt-repository ppa:ondrej/php -y \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    php8.2 \
+    php8.2-cli \
+    php8.2-common \
+    php8.2-curl \
+    php8.2-mbstring \
+    php8.2-xml \
+    php8.2-zip \
+    php8.2-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && php --version
+
+# Ruby 3.2
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ruby-full \
+    ruby-dev \
+    bundler \
+    && rm -rf /var/lib/apt/lists/* \
+    && ruby --version \
+    && bundle --version
+
+# Swift 5.10 (for Apple platforms)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libcurl4-openssl-dev \
+    libedit2 \
+    libicu-dev \
+    libpython3-dev \
+    libsqlite3-0 \
+    libxml2 \
+    libz3-dev \
+    pkg-config \
+    uuid-dev \
+    wget \
+    && rm -rf /var/lib/apt/lists/* \
+    && wget -q https://download.swift.org/swift-5.10-release/ubuntu2204/swift-5.10-RELEASE/swift-5.10-RELEASE-ubuntu22.04.tar.gz \
+    && tar xzf swift-5.10-RELEASE-ubuntu22.04.tar.gz -C /usr/local --strip-components=1 \
+    && rm swift-5.10-RELEASE-ubuntu22.04.tar.gz \
+    && swift --version
+
+# CMake (latest)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    cmake \
+    && rm -rf /var/lib/apt/lists/* \
+    && cmake --version
+
+# Ninja build system
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ninja-build \
+    && rm -rf /var/lib/apt/lists/* \
+    && ninja --version
+
+# ===== BUILD TOOLS =====
+
+# Git LFS
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git-lfs \
+    && rm -rf /var/lib/apt/lists/* \
+    && git lfs install
+
+# AWS CLI v2
+RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" \
+    && unzip awscliv2.zip \
+    && ./aws/install \
+    && rm -rf awscliv2.zip aws \
+    && aws --version
+
+# Azure CLI
+RUN curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor \
+    | tee /etc/apt/trusted.gpg.d/microsoft.gpg > /dev/null \
+    && echo "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ jammy main" \
+    | tee /etc/apt/sources.list.d/azure-cli.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    azure-cli \
+    && rm -rf /var/lib/apt/lists/* \
+    && az --version
+
+# Google Cloud SDK
+RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
+    | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list \
+    && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+    | apt-key --keyring /usr/share/keyrings/cloud.google.gpg add - \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    google-cloud-cli \
+    && rm -rf /var/lib/apt/lists/* \
+    && gcloud --version
+
+# Kubernetes tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    kubectl \
+    && rm -rf /var/lib/apt/lists/* \
+    && kubectl version --client
+
+# ===== ENVIRONMENT SETUP =====
+
+# Create runner user
+RUN useradd -m -u 1001 -s /bin/bash runner && \
+    mkdir -p /actions-runner && \
+    chown -R runner:runner /actions-runner
+
+# Add Rust to PATH for runner user
+RUN echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> /home/runner/.bashrc
+
+# Copy entrypoint script
+COPY --chown=runner:runner entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Set working directory
+WORKDIR /actions-runner
+
+# Switch to runner user
+USER runner
+
+# Environment variables
+ENV RUNNER_NAME=github-build-runner
+ENV RUNNER_LABELS=linux,build,docker,java,node,python,dotnet,rust,go,swift
+ENV RUNNER_GROUP=default
+ENV WORK_DIR=/actions-runner
+ENV CLEANUP_EXISTING=false
+ENV FORCE_RECONFIGURE=false
+ENV INSTALL_DOCKER=true
+
+# Add Rust to PATH
+ENV PATH="/home/runner/.cargo/bin:/usr/local/go/bin:$PATH"
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/ || exit 1
+
+# Entrypoint
+ENTRYPOINT ["/entrypoint.sh"]
+
+# CMD (will be passed by entrypoint)
+CMD ["./run.sh"]
+
+# Labels
+LABEL org.opencontainers.image.source="https://github.com/your-org/github-runner"
+LABEL org.opencontainers.image.description="GitHub Actions self-hosted build runner for Linux with comprehensive toolchains"
+LABEL org.opencontainers.image.version="build-runner-v1.0"
+LABEL org.opencontainers.image.licenses="MIT"

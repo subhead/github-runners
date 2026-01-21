@@ -1,0 +1,154 @@
+# docker-compose/linux-web.yml
+# Web stack GitHub Actions runner configuration
+# Designed for Node.js + Go web development, frontend/backend, APIs
+
+version: '3.8'
+
+networks:
+  github-runners:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+services:
+  web-runner:
+    # Build the web stack composite image
+    build:
+      context: ../
+      dockerfile: docker/linux/composite/Dockerfile.web
+      target: gh-runner:web-stack
+      # Optional: Build arguments
+      args:
+        RUNNER_VERSION: 2.32.0
+        NODE_VERSION: 20
+        GO_VERSION: 1.22.7
+    image: gh-runner:web-stack
+    container_name: github-web-runner
+    hostname: web-runner
+
+    # Resource limits for web development
+    deploy:
+      resources:
+        limits:
+          cpus: '2.5'
+          memory: 5G
+        reservations:
+          cpus: '1.2'
+          memory: 2.5G
+
+    # Memory and CPU limits
+    mem_limit: 5g
+    mem_reservation: 2.5g
+    cpus: '2.5'
+    cpu_shares: 1024
+
+    # Environment variables (REQUIRED)
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN:?ERROR: GITHUB_TOKEN environment variable is required}
+      - GITHUB_REPOSITORY=${GITHUB_REPOSITORY:?ERROR: GITHUB_REPOSITORY environment variable is required}
+      - RUNNER_NAME=${RUNNER_NAME:-web-runner-01}
+      - RUNNER_LABELS=${RUNNER_LABELS:-linux,node,go,web,frontend,backend,api}
+      - RUNNER_GROUP=${RUNNER_GROUP:-Default}
+      - RUNNER_WORKDIR=${RUNNER_WORKDIR:-_work}
+      - RUNNER_AS_ROOT=${RUNNER_AS_ROOT:-false}
+      - RUNNER_REPLACE_EXISTING=${RUNNER_REPLACE_EXISTING:-false}
+
+    # Optional environment variables for web specific configuration
+      - NODE_ENV=${NODE_ENV:-production}
+      - NODE_OPTIONS=${NODE_OPTIONS:--max-old-space-size=4096}
+      - NPM_CONFIG_CACHE=${NPM_CONFIG_CACHE:-/home/runner/.npm-global}
+      - YARN_CACHE_FOLDER=${YARN_CACHE_FOLDER:-/home/runner/.yarn-cache}
+      - PNPM_HOME=${PNPM_HOME:-/home/runner/.local/share/pnpm}
+      - GOPATH=${GOPATH:-/go}
+      - GOROOT=${GOROOT:-/usr/local/go}
+      - GO111MODULE=${GO111MODULE:-on}
+      - GOBIN=${GOBIN:-/go/bin}
+
+    # Volumes
+    volumes:
+      # Docker socket for container builds (read-only for security)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+      # Persistent runner data
+      - ./data/web-runner:/actions-runner
+
+      # Node.js package caches
+      - ./data/node-npm-cache:/home/runner/.npm-global
+      - ./data/node-yarn-cache:/home/runner/.yarn-cache
+      - ./data/node-pnpm-cache:/home/runner/.local/share/pnpm
+
+      # Go package caches
+      - ./data/go-pkg-cache:/go/pkg/mod
+      - ./data/go-bin-cache:/go/bin
+
+      # Optional: Shared package caches for web development
+      - ./data/web-build-cache:/home/runner/.cache
+
+      # Optional: Source code mounting for local development
+      # - /path/to/your/project:/workspace:ro
+
+    # Network configuration
+    networks:
+      - github-runners
+
+    # Expose ports for web testing (optional)
+    # ports:
+    #   - "3000:3000"  # Node.js app
+    #   - "8080:8080"  # Go app
+    #   - "80:80"      # Nginx
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service"
+        env: "os,customer"
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"] || ["CMD", "pgrep", "run.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    # Labels for monitoring
+    labels:
+      - "service=github-runner"
+      - "language=nodejs"
+      - "language=go"
+      - "role=build"
+      - "environment=production"
+
+    # User configuration
+    user: "1001:1001"
+
+    # Read only root filesystem (optional, for security)
+    # read_only: true
+
+    # Depends on
+    depends_on:
+      - # Add any dependencies if needed
+
+# Profile for selective deployment
+# profiles:
+#   - web
+#   - node
+#   - go
+#   - github

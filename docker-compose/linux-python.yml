@@ -1,0 +1,142 @@
+# docker-compose/linux-python.yml
+# Python development GitHub Actions runner configuration
+# Designed for Python/Django/Flask, ML/AI workloads, data science
+
+version: '3.8'
+
+networks:
+  github-runners:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+services:
+  python-runner:
+    # Build the Python only composite image
+    build:
+      context: ../
+      dockerfile: docker/linux/composite/Dockerfile.python-only
+      target: gh-runner:python-only
+      # Optional: Build arguments
+      args:
+        RUNNER_VERSION: 2.32.0
+    image: gh-runner:python-only
+    container_name: github-python-runner
+    hostname: python-runner
+
+    # Resource limits for Python/ML workloads
+    deploy:
+      resources:
+        limits:
+          cpus: '3.0'
+          memory: 6G
+        reservations:
+          cpus: '1.5'
+          memory: 3G
+
+    # Memory and CPU limits
+    mem_limit: 6g
+    mem_reservation: 3g
+    cpus: '3.0'
+    cpu_shares: 1024
+
+    # Environment variables (REQUIRED)
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN:?ERROR: GITHUB_TOKEN environment variable is required}
+      - GITHUB_REPOSITORY=${GITHUB_REPOSITORY:?ERROR: GITHUB_REPOSITORY environment variable is required}
+      - RUNNER_NAME=${RUNNER_NAME:-python-runner-01}
+      - RUNNER_LABELS=${RUNNER_LABELS:-linux,python,ml,ai,data-science,build}
+      - RUNNER_GROUP=${RUNNER_GROUP:-Default}
+      - RUNNER_WORKDIR=${RUNNER_WORKDIR:-_work}
+      - RUNNER_AS_ROOT=${RUNNER_AS_ROOT:-false}
+      - RUNNER_REPLACE_EXISTING=${RUNNER_REPLACE_EXISTING:-false}
+
+    # Optional environment variables for Python specific configuration
+      - PYTHONUNBUFFERED=${PYTHONUNBUFFERED:-1}
+      - PYTHONDONTWRITEBYTECODE=${PYTHONDONTWRITEBYTECODE:-1}
+      - PIP_NO_CACHE_DIR=${PIP_NO_CACHE_DIR:-off}
+      - PIP_DISABLE_PIP_VERSION_CHECK=${PIP_DISABLE_PIP_VERSION_CHECK:-on}
+      - VENV_PATH=${VENV_PATH:-/home/runner/.venv}
+
+    # Volumes
+    volumes:
+      # Docker socket for container builds (read-only for security)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+      # Persistent runner data
+      - ./data/python-runner:/actions-runner
+
+      # Python package cache (important for fast builds)
+      - ./data/python-pip-cache:/home/runner/.cache/pip
+      - ./data/python-wheel-cache:/home/runner/.cache/pip/wheels
+
+      # Virtual environment cache (for reusable venvs)
+      - ./data/python-venv-cache:/home/runner/.venv
+      - ./data/python-local-lib:/home/runner/.local/lib/python3.10/site-packages
+
+      # Optional: Shared ML models cache
+      - ./data/python-ml-cache:/home/runner/.cache/ml
+      - ./data/python-torch-cache:/home/runner/.cache/torch
+      - ./data/python-tensorflow-cache:/home/runner/.cache/tensorflow
+
+      # Optional: Source code mounting for local development
+      # - /path/to/your/project:/workspace:ro
+
+    # Network configuration
+    networks:
+      - github-runners
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service"
+        env: "os,customer"
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"] || ["CMD", "pgrep", "run.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    # Labels for monitoring
+    labels:
+      - "service=github-runner"
+      - "language=python"
+      - "role=build"
+      - "environment=production"
+
+    # User configuration
+    user: "1001:1001"
+
+    # Read only root filesystem (optional, for security)
+    # read_only: true
+
+    # Depends on
+    depends_on:
+      - # Add any dependencies if needed
+
+# Profile for selective deployment
+# profiles:
+#   - python
+#   - ml
+#   - ai
+#   - github

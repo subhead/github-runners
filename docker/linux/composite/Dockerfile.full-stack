@@ -1,0 +1,92 @@
+# docker/linux/composite/Dockerfile.full-stack
+# Full stack runner - ALL languages (legacy/monolith support)
+# Size: ~2.5GB (Base 300MB + All language packs ~2.2GB)
+
+FROM gh-runner:linux-base
+
+# Copy Python toolchain
+COPY --from=gh-runner:python-pack /usr/bin/python3 /usr/bin/python3
+COPY --from=gh-runner:python-pack /usr/bin/python3.10 /usr/bin/python3.10
+COPY --from=gh-runner:python-pack /usr/local/bin/pip3 /usr/local/bin/pip3
+COPY --from=gh-runner:python-pack /usr/local/bin/pip /usr/local/bin/pip
+COPY --from=gh-runner:python-pack /usr/lib/python3.10 /usr/lib/python3.10
+COPY --from=gh-runner:python-pack /usr/local/lib/python3.10 /usr/local/lib/python3.10
+
+# Copy C++ toolchain
+COPY --from=gh-runner:cpp-pack /usr/bin/gcc /usr/bin/gcc
+COPY --from=gh-runner:cpp-pack /usr/bin/g++ /usr/bin/g++
+COPY --from=gh-runner:cpp-pack /usr/bin/clang /usr/bin/clang
+COPY --from=gh-runner:cpp-pack /usr/bin/clang-format /usr/bin/clang-format
+COPY --from=gh-runner:cpp-pack /usr/bin/clang-tidy /usr/bin/clang-tidy
+COPY --from=gh-runner:cpp-pack /usr/bin/cmake /usr/bin/cmake
+COPY --from=gh-runner:cpp-pack /usr/bin/make /usr/bin/make
+COPY --from=gh-runner:cpp-pack /usr/bin/pkg-config /usr/bin/pkg-config
+COPY --from=gh-runner:cpp-pack /usr/bin/gdb /usr/bin/gdb
+COPY --from=gh-runner:cpp-pack /usr/bin/valgrind /usr/bin/valgrind
+COPY --from=gh-runner:cpp-pack /usr/lib/ /usr/lib/
+COPY --from=gh-runner:cpp-pack /usr/include/ /usr/include/
+COPY --from=gh-runner:cpp-pack /usr/local/lib/ /usr/local/lib/
+COPY --from=gh-runner:cpp-pack /usr/local/include/ /usr/local/include/
+
+# Copy Node.js toolchain
+COPY --from=gh-runner:nodejs-pack /usr/local/bin/node /usr/local/bin/node
+COPY --from=gh-runner:nodejs-pack /usr/local/bin/npm /usr/local/bin/npm
+COPY --from=gh-runner:nodejs-pack /usr/local/bin/npx /usr/local/bin/npx
+COPY --from=gh-runner:nodejs-pack /usr/local/bin/yarn /usr/local/bin/yarn
+COPY --from=gh-runner:nodejs-pack /usr/local/bin/pnpm /usr/local/bin/pnpm
+COPY --from=gh-runner:nodejs-pack /usr/local/lib/node_modules /usr/local/lib/node_modules
+
+# Copy Go toolchain
+COPY --from=gh-runner:go-pack /usr/local/go /usr/local/go
+COPY --from=gh-runner:go-pack /go /go
+
+# Create symlinks
+RUN ln -sf /usr/bin/python3 /usr/bin/python && \
+    ln -sf /usr/local/go/bin/go /usr/bin/go && \
+    ln -sf /usr/local/go/bin/gofmt /usr/bin/gofmt
+
+# Install additional common tools (for full compatibility)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    wget \
+    gnupg \
+    nginx \
+    jq \
+    docker.io \
+    git-lfs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Verify all installations
+RUN python3 --version && \
+    pip3 --version && \
+    gcc --version && \
+    g++ --version && \
+    clang --version && \
+    cmake --version && \
+    node --version && \
+    npm --version && \
+    yarn --version && \
+    go version
+
+# Environment variables for all stacks
+ENV BUILD_STACK=full \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    NODE_ENV=production \
+    GOROOT=/usr/local/go \
+    GOPATH=/go \
+    GO111MODULE=on \
+    CC=/usr/bin/gcc \
+    CXX=/usr/bin/g++ \
+    CMAKE_C_COMPILER=gcc \
+    CMAKE_CXX_COMPILER=g++ \
+    PATH="/usr/local/go/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin:/home/runner/.local/bin:${PATH}"
+
+# Labels
+LABEL org.opencontainers.image.description="Full stack GitHub Actions runner (Python + C++ + Node.js + Go)" \
+      org.opencontainers.image.version="1.0.0" \
+      org.opencontainers.image.tags="full,full-stack,monolith,legacy,python,cpp,nodejs,go" \
+      org.opencontainers.image.size="~2.5GB"
+
+USER runner
+WORKDIR /actions-runner

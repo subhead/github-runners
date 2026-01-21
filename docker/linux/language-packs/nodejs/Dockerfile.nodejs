@@ -1,0 +1,57 @@
+# docker/linux/language-packs/nodejs/Dockerfile.nodejs
+# Node.js 20 LTS language pack for GitHub Actions runners
+# Size: ~180MB (adds to base ~300MB = ~480MB total)
+
+FROM gh-runner:linux-base AS nodejs-pack
+
+# Prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install curl and gnupg (required for Node.js installation)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gnupg \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js 20 LTS using NodeSource repository
+# This ensures we get the latest LTS version
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# Verify Node.js installation
+RUN node --version && \
+    npm --version
+
+# Update npm to latest version
+RUN npm install -g npm@latest && \
+    npm --version
+
+# Set environment variables for Node.js development
+ENV NODE_ENV=production \
+    NODE_OPTIONS="--max-old-space-size=4096"
+
+# Create global node_modules directory for global packages
+RUN mkdir -p /usr/local/lib/node_modules && \
+    chown -R runner:runner /usr/local/lib/node_modules
+
+# Update path to include Node.js binaries
+ENV PATH="/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin:/home/runner/.npm-global/bin:${PATH}"
+
+# Common Node.js build tools (as global packages)
+# These are installed globally for better caching and reuse
+RUN npm install -g --no-update-notifier \
+    npm \
+    yarn \
+    pnpm \
+    && npm cache clean --force
+
+# Labels
+LABEL org.opencontainers.image.description="Node.js 20 LTS toolchain for GitHub Actions runners" \
+      org.opencontainers.image.version="1.0.0" \
+      org.opencontainers.image.node.version="20.x" \
+      org.opencontainers.image.npm.version="10.x"
+
+USER runner
+WORKDIR /actions-runner

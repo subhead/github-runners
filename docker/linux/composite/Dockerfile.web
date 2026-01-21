@@ -1,0 +1,52 @@
+# docker/linux/composite/Dockerfile.web
+# Web stack runner - Node.js + Go for web development
+# Size: ~580MB (Base 300MB + Node.js 180MB + Go 100MB)
+
+FROM gh-runner:linux-base
+
+# Copy Node.js toolchain from the Node.js pack
+COPY --from=gh-runner:nodejs-pack /usr/local/bin/node /usr/local/bin/node
+COPY --from=gh-runner:nodejs-pack /usr/local/bin/npm /usr/local/bin/npm
+COPY --from=gh-runner:nodejs-pack /usr/local/bin/npx /usr/local/bin/npx
+COPY --from=gh-runner:nodejs-pack /usr/local/bin/yarn /usr/local/bin/yarn
+COPY --from=gh-runner:nodejs-pack /usr/local/bin/pnpm /usr/local/bin/pnpm
+COPY --from=gh-runner:nodejs-pack /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=gh-runner:nodejs-pack /usr/local/share/doc /usr/local/share/doc 2>/dev/null || true
+
+# Copy Go toolchain from the Go pack
+COPY --from=gh-runner:go-pack /usr/local/go /usr/local/go
+COPY --from=gh-runner:go-pack /go /go
+
+# Create symlinks for go tools (if needed)
+RUN ln -sf /usr/local/go/bin/go /usr/bin/go && \
+    ln -sf /usr/local/go/bin/gofmt /usr/bin/gofmt
+
+# Install web-specific build tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nginx \
+    webpack \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Verify installations
+RUN node --version && \
+    npm --version && \
+    yarn --version && \
+    go version
+
+# Environment variables for web development
+ENV BUILD_STACK=nodego \
+    NODE_ENV=production \
+    GOROOT=/usr/local/go \
+    GOPATH=/go \
+    GO111MODULE=on \
+    PATH="/usr/local/go/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin:/home/runner/.local/bin:${PATH}"
+
+# Labels
+LABEL org.opencontainers.image.description="Node.js + Go web development GitHub Actions runner" \
+      org.opencontainers.image.version="1.0.0" \
+      org.opencontainers.image.tags="web,nodejs,go,frontend,backend,nginx" \
+      org.opencontainers.image.size="~580MB"
+
+USER runner
+WORKDIR /actions-runner

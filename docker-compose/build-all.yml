@@ -1,0 +1,124 @@
+# docker-compose/build-all.yml
+# Docker Compose configuration for building all modular runner images
+# Run: docker-compose -f docker-compose/build-all.yml build
+
+version: '3.8'
+
+services:
+  # Base image
+  base:
+    build:
+      context: ../
+      dockerfile: docker/linux/base/Dockerfile.base
+      args:
+        RUNNER_VERSION: 2.32.0
+    image: gh-runner:linux-base
+    profiles:
+      - build
+      - base
+
+  # Language packs
+  cpp-pack:
+    build:
+      context: ../
+      dockerfile: docker/linux/language-packs/cpp/Dockerfile.cpp
+    image: gh-runner:cpp-pack
+    depends_on:
+      - base
+    profiles:
+      - build
+      - cpp
+      - language
+
+  python-pack:
+    build:
+      context: ../
+      dockerfile: docker/linux/language-packs/python/Dockerfile.python
+    image: gh-runner:python-pack
+    depends_on:
+      - base
+    profiles:
+      - build
+      - python
+      - language
+
+  nodejs-pack:
+    build:
+      context: ../
+      dockerfile: docker/linux/language-packs/nodejs/Dockerfile.nodejs
+    image: gh-runner:nodejs-pack
+    depends_on:
+      - base
+    profiles:
+      - build
+      - nodejs
+      - language
+
+  go-pack:
+    build:
+      context: ../
+      dockerfile: docker/linux/language-packs/go/Dockerfile.go
+    image: gh-runner:go-pack
+    depends_on:
+      - base
+    profiles:
+      - build
+      - go
+      - language
+
+  # Composite images
+  cpp-only:
+    build:
+      context: ../
+      dockerfile: docker/linux/composite/Dockerfile.cpp-only
+    image: gh-runner:cpp-only
+    depends_on:
+      - cpp-pack
+    profiles:
+      - build
+      - cpp
+      - composite
+
+  python-only:
+    build:
+      context: ../
+      dockerfile: docker/linux/composite/Dockerfile.python-only
+    image: gh-runner:python-only
+    depends_on:
+      - python-pack
+    profiles:
+      - build
+      - python
+      - composite
+
+  web:
+    build:
+      context: ../
+      dockerfile: docker/linux/composite/Dockerfile.web
+    image: gh-runner:web-stack
+    depends_on:
+      - nodejs-pack
+      - go-pack
+    profiles:
+      - build
+      - web
+      - composite
+
+  full-stack:
+    build:
+      context: ../
+      dockerfile: docker/linux/composite/Dockerfile.full-stack
+    image: gh-runner:full-stack
+    depends_on:
+      - cpp-pack
+      - python-pack
+      - nodejs-pack
+      - go-pack
+    profiles:
+      - build
+      - full
+      - composite
+
+networks:
+  github-runners:
+    driver: bridge

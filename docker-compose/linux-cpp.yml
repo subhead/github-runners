@@ -1,0 +1,172 @@
+# docker-compose/linux-cpp.yml
+# C++ development GitHub Actions runner configuration
+# Designed for C/C++ build workloads, systems programming, embedded development
+
+version: '3.8'
+
+networks:
+  github-runners:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+services:
+  cpp-runner:
+    # Build the C++ only composite image
+    build:
+      context: ../
+      dockerfile: docker/linux/composite/Dockerfile.cpp-only
+      dockerfile: docker/linux/composite/Dockerfile.cpp-only
+      target: gh-runner:cpp-only
+      # Optional: Build arguments
+      args:
+        RUNNER_VERSION: 2.32.0
+    image: gh-runner:cpp-only
+    container_name: github-cpp-runner
+    hostname: cpp-runner
+
+    # Resource limits for C++ builds (memory intensive)
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+
+    # Memory and CPU limits
+    mem_limit: 4g
+    mem_reservation: 2g
+    cpus: '2.0'
+    cpu_shares: 1024
+
+    # Environment variables (REQUIRED)
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN:?ERROR: GITHUB_TOKEN environment variable is required}
+      - GITHUB_REPOSITORY=${GITHUB_REPOSITORY:?ERROR: GITHUB_REPOSITORY environment variable is required}
+      - RUNNER_NAME=${RUNNER_NAME:-cpp-runner-01}
+      - RUNNER_LABELS=${RUNNER_LABELS:-linux,cpp,build,compilation}
+      - RUNNER_GROUP=${RUNNER_GROUP:-Default}
+      - RUNNER_WORKDIR=${RUNNER_WORKDIR:-_work}
+      - RUNNER_AS_ROOT=${RUNNER_AS_ROOT:-false}
+      - RUNNER_REPLACE_EXISTING=${RUNNER_REPLACE_EXISTING:-false}
+
+    # Optional environment variables for C++ specific configuration
+      - CC=${CC:-/usr/bin/gcc}
+      - CXX=${CXX:-/usr/bin/g++}
+      - BUILD_TYPE=${BUILD_TYPE:-Release}
+      - CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE:-Release}
+
+    # Volumes
+    volumes:
+      # Docker socket for container builds (read-only for security)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+      # Persistent runner data
+      - ./data/cpp-runner:/actions-runner
+
+      # Optional: Shared build cache for CMake/Conan/vcpkg
+      - ./data/cpp-build-cache:/home/runner/.cache
+      - ./data/cpp-conan-cache:/home/runner/.conan
+      - ./data/cpp-vcpkg-cache:/home/runner/.vcpkg
+
+      # Optional: Source code mounting for local development
+      # - /path/to/your/project:/workspace:ro
+
+    # Network configuration
+    networks:
+      - github-runners
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service"
+        env: "os,customer"
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"] || ["CMD", "pgrep", "run.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    # Labels for monitoring
+    labels:
+      - "service=github-runner"
+      - "language=cpp"
+      - "role=build"
+      - "environment=production"
+
+    # User configuration
+    user: "1001:1001"
+
+    # Read only root filesystem (optional, for security)
+    # read_only: true
+
+    # Entrypoint and command
+    # entrypoint: ["/entrypoint.sh"]
+    # command: ["--help"]
+
+    # Depends on
+    depends_on:
+      - # Add any dependencies if needed
+
+    # External links
+    # external_links:
+    #   - some-service
+
+    # Extra hosts
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
+
+    # DNS configuration
+    # dns:
+    #   - 8.8.8.8
+    #   - 8.8.4.4
+
+    # DNS search domains
+    # dns_search:
+    #   - example.com
+
+    # Secrets (if using Docker secrets)
+    # secrets:
+    #   - github_token
+
+# Secrets configuration (if needed)
+# secrets:
+#   github_token:
+#     file: ./secrets/github_token.txt
+
+# Volume definitions for named volumes
+# volumes:
+#   cpp-build-cache:
+#     driver: local
+#     driver_opts:
+#       type: none
+#       device: ./data/cpp-build-cache
+#       o: bind
+
+# Profile for selective deployment
+# profiles:
+#   - cpp
+#   - build
+#   - github

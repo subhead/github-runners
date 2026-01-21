@@ -1,0 +1,81 @@
+# GitHub Actions Runner - Action Runner
+# Lightweight self-hosted runner for GitHub Actions workflows
+# Optimized for running jobs, not for building applications
+
+ARG UBUNTU_VERSION=22.04
+FROM ubuntu:${UBUNTU_VERSION} AS base
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install core dependencies for GitHub Actions runner
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    wget \
+    git \
+    tar \
+    zip \
+    unzip \
+    gnupg \
+    lsb-release \
+    software-properties-common \
+    jq \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install GitHub Actions Runner
+# Pin to a specific version for reproducibility
+ARG RUNNER_VERSION=2.320.0
+ARG RUNNER_ARCH=x64
+
+# Download and extract GitHub Actions runner
+WORKDIR /tmp
+RUN curl -o actions-runner-linux-${RUNNER_ARCH}-${RUNNER_VERSION}.tar.gz \
+    -L https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-${RUNNER_ARCH}-${RUNNER_VERSION}.tar.gz \
+    && tar xzf ./actions-runner-linux-${RUNNER_ARCH}-${RUNNER_VERSION}.tar.gz -C /actions-runner \
+    && rm ./actions-runner-linux-${RUNNER_ARCH}-${RUNNER_VERSION}.tar.gz
+
+# Install Docker CLI (optional, for Docker-in-Docker support)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    docker.io \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create runner user
+RUN useradd -m -u 1001 -s /bin/bash runner && \
+    mkdir -p /actions-runner && \
+    chown -R runner:runner /actions-runner
+
+# Copy entrypoint script
+COPY --chown=runner:runner entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Set working directory
+WORKDIR /actions-runner
+
+# Switch to runner user
+USER runner
+
+# Environment variables
+ENV RUNNER_NAME=github-runner
+ENV RUNNER_LABELS=linux,runner
+ENV RUNNER_GROUP=default
+ENV WORK_DIR=/actions-runner
+ENV CLEANUP_EXISTING=false
+ENV FORCE_RECONFIGURE=false
+ENV INSTALL_DOCKER=false
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/ || exit 1
+
+# Entrypoint
+ENTRYPOINT ["/entrypoint.sh"]
+
+# CMD (will be passed by entrypoint)
+CMD ["./run.sh"]
+
+# Labels
+LABEL org.opencontainers.image.source="https://github.com/your-org/github-runner"
+LABEL org.opencontainers.image.description="GitHub Actions self-hosted runner for Linux"
+LABEL org.opencontainers.image.version="${RUNNER_VERSION}"
+LABEL org.opencontainers.image.licenses="MIT"
