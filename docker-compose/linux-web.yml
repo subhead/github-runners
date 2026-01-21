@@ -20,7 +20,7 @@ services:
       target: gh-runner:web-stack
       # Optional: Build arguments
       args:
-        RUNNER_VERSION: 2.32.0
+        RUNNER_VERSION: 2.331.0
         NODE_VERSION: 20
         GO_VERSION: 1.22.7
     image: gh-runner:web-stack

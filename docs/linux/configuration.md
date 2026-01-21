@@ -219,7 +219,7 @@ services:
       context: .
       dockerfile: docker/linux/Dockerfile.action-runner
       args:
-        - RUNNER_VERSION=2.32.0
+        - RUNNER_VERSION=2.331.0
         - UBUNTU_VERSION=22.04
     container_name: github-action-runner
     image: gh-runner:linux-action
@@ -251,7 +251,7 @@ services:
       context: .
       dockerfile: docker/linux/Dockerfile.build-runner
       args:
-        - RUNNER_VERSION=2.32.0
+        - RUNNER_VERSION=2.331.0
         - UBUNTU_VERSION=22.04
     container_name: github-build-runner
     image: gh-runner:linux-build

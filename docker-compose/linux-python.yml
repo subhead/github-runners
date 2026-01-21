@@ -20,7 +20,7 @@ services:
       target: gh-runner:python-only
       # Optional: Build arguments
       args:
-        RUNNER_VERSION: 2.32.0
+        RUNNER_VERSION: 2.331.0
     image: gh-runner:python-only
     container_name: github-python-runner
     hostname: python-runner

@@ -18,7 +18,7 @@ services:
       context: ../
       dockerfile: docker/linux/base/Dockerfile.base
       args:
-        RUNNER_VERSION: 2.32.0
+        RUNNER_VERSION: 2.331.0
     image: gh-runner:linux-base
     container_name: github-base-runner
     hostname: base-runner

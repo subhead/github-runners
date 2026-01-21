@@ -20,7 +20,7 @@ services:
       target: gh-runner:flutter-only
       # Optional: Build arguments
       args:
-        RUNNER_VERSION: 2.32.0
+        RUNNER_VERSION: 2.331.0
         FLUTTER_VERSION: 3.19.5
         FLUTTER_CHANNEL: stable
         ANDROID_SDK_VERSION: 34

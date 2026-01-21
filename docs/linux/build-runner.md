@@ -984,7 +984,7 @@ jobs:
 ### Image Details
 
 - **Base Image**: Ubuntu 22.04 LTS
-- **Runner Version**: 2.32.0
+- **Runner Version**: 2.331.0
 - **Architecture**: x64
 - **Size**: ~2.5GB
 - **User**: runner (UID 1001)

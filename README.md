@@ -961,7 +961,7 @@ docker buildx build \
 
 ### Core Components
 - ✅ Base image with Ubuntu 22.04
-- ✅ GitHub Actions runner (v2.32.0)
+- ✅ GitHub Actions runner (v2.331.0)
 - ✅ Language packs (6 languages: C++, Python, Node.js, Go, Flutter, Flet)
 - ✅ Composite images (6 combinations: cpp-only, python-only, web-stack, flutter-only, flet-only, full-stack)
 - ✅ Docker Compose configurations

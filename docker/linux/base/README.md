@@ -12,7 +12,7 @@ This is the minimal base image for the modular Linux GitHub Actions runners. It 
 
 ### Core Components
 - **Ubuntu 22.04**: Minimal installation
-- **GitHub Actions Runner**: Latest stable version (v2.32.0)
+- **GitHub Actions Runner**: Latest stable version (v2.331.0)
 - **Essential System Tools**: curl, git, tar, zip, unzip, jq
 - **User Management**: Runner user with appropriate permissions
 
@@ -38,7 +38,7 @@ docker build -f docker/linux/base/Dockerfile.base \
 ```
 
 ### Customization Options
-- `RUNNER_VERSION`: GitHub Actions runner version (default: 2.32.0)
+- `RUNNER_VERSION`: GitHub Actions runner version (default: 2.331.0)
 
 ## Size Comparison
 

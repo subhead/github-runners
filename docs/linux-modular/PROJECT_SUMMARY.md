@@ -44,7 +44,7 @@ This project implements a **modular, production-ready** architecture for GitHub 
 **Build Time:** ~2 minutes
 **Features:**
 - Ubuntu 22.04 LTS base
-- GitHub Actions runner (v2.32.0)
+- GitHub Actions runner (v2.331.0)
 - Core system tools (curl, git, tar, etc.)
 - Non-root user (runner:1001)
 - Graceful shutdown handling

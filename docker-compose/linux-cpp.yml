@@ -21,7 +21,7 @@ services:
       target: gh-runner:cpp-only
       # Optional: Build arguments
       args:
-        RUNNER_VERSION: 2.32.0
+        RUNNER_VERSION: 2.331.0
     image: gh-runner:cpp-only
     container_name: github-cpp-runner
     hostname: cpp-runner

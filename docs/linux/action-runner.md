@@ -579,7 +579,7 @@ docker run -d gh-runner:custom
 ### Image Details
 
 - **Base Image**: Ubuntu 22.04 LTS
-- **Runner Version**: 2.32.0
+- **Runner Version**: 2.331.0
 - **Architecture**: x64
 - **Size**: ~600MB
 - **User**: runner (UID 1001)
