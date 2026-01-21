@@ -55,6 +55,13 @@ RUN mkdir -p /opt/flutter && \
 # Install Dart SDK (included with Flutter)
 # Flutter already includes Dart SDK
 
+# Install Java (required for Android SDK and Flutter)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openjdk-17-jdk \
+    openjdk-17-jre \
+    && rm -rf /var/lib/apt/lists/* \
+    && java -version
+
 # Install Android SDK and tools (for Android builds)
 ARG ANDROID_SDK_VERSION=34
 ARG ANDROID_BUILD_TOOLS_VERSION=34.0.0
@@ -68,6 +75,7 @@ RUN mkdir -p /opt/android-sdk/cmdline-tools && \
 
 # Set up Android SDK environment
 ENV ANDROID_SDK_ROOT=/opt/android-sdk
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 ENV PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools
 
 # Install Android SDK components
