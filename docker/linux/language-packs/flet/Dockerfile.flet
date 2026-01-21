@@ -127,6 +127,7 @@ ENV PUB_CACHE=/opt/flutter/.pub-cache
 
 # Install Flet Python package and Flutter packages
 # Flet SDK for building cross-platform apps
+# Note: repath is a dependency of flet-core
 RUN pip install --no-cache-dir flet==0.22.0 && \
     echo "=== Installed packages ===" && \
     pip show flet && \
