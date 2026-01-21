@@ -31,10 +31,10 @@ COPY --from=gh-runner:cpp-pack /usr/include/ /usr/include/
 COPY --from=gh-runner:cpp-pack /usr/local/lib/ /usr/local/lib/
 COPY --from=gh-runner:cpp-pack /usr/local/include/ /usr/local/include/
 
-# Copy Node.js toolchain
-COPY --from=gh-runner:nodejs-pack /usr/local/bin/node /usr/local/bin/node
-COPY --from=gh-runner:nodejs-pack /usr/local/bin/npm /usr/local/bin/npm
-COPY --from=gh-runner:nodejs-pack /usr/local/bin/npx /usr/local/bin/npx
+# Copy Node.js toolchain (Node.js installs to /usr/bin/ via apt-get)
+COPY --from=gh-runner:nodejs-pack /usr/bin/node /usr/bin/node
+COPY --from=gh-runner:nodejs-pack /usr/bin/npm /usr/bin/npm
+COPY --from=gh-runner:nodejs-pack /usr/bin/npx /usr/bin/npx
 COPY --from=gh-runner:nodejs-pack /usr/local/bin/yarn /usr/local/bin/yarn
 COPY --from=gh-runner:nodejs-pack /usr/local/bin/pnpm /usr/local/bin/pnpm
 COPY --from=gh-runner:nodejs-pack /usr/local/lib/node_modules /usr/local/lib/node_modules
@@ -48,8 +48,10 @@ COPY --from=gh-runner:flutter-pack /opt/flutter /opt/flutter
 COPY --from=gh-runner:flutter-pack /opt/android-sdk /opt/android-sdk
 COPY --from=gh-runner:flutter-pack /usr/lib/x86_64-linux-gnu/ /usr/lib/x86_64-linux-gnu/
 
-# Copy Flet packages
-COPY --from=gh-runner:flet-pack /usr/local/lib/python3.10/site-packages/flet /usr/local/lib/python3.10/site-packages/flet
+# Copy Flet packages (Ubuntu uses dist-packages, not site-packages)
+COPY --from=gh-runner:flet-pack /usr/local/lib/python3.10/dist-packages/flet /usr/local/lib/python3.10/dist-packages/flet
+COPY --from=gh-runner:flet-pack /usr/local/lib/python3.10/dist-packages/flet_core /usr/local/lib/python3.10/dist-packages/flet_core
+COPY --from=gh-runner:flet-pack /usr/local/lib/python3.10/dist-packages/flet_runtime /usr/local/lib/python3.10/dist-packages/flet_runtime
 
 # Create symlinks
 RUN ln -sf /usr/bin/python3 /usr/bin/python && \
@@ -82,7 +84,8 @@ RUN python3 --version && \
     go version && \
     flutter --version && \
     dart --version && \
-    python3 -c "import flet; print(f'Flet: {flet.__version__}')"
+    python3 -c "import flet; print(f'Flet installed successfully')" && \
+    pip3 show flet | grep Version
 
 # Environment variables for all stacks
 ENV BUILD_STACK=full \
