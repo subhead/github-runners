@@ -1,0 +1,148 @@
+# docker/linux/language-packs/flet/Dockerfile.flet
+# Flet (Python to Flutter) language pack for GitHub Actions runners
+# Size: ~3.5GB (adds to base ~300MB + Python 150MB + Flutter 2.0GB = ~3.8GB total)
+
+FROM gh-runner:linux-base AS flet-pack
+
+# Prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install Python toolchain first (prerequisite for Flet)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-venv \
+    python3-dev \
+    python3-setuptools \
+    && rm -rf /var/lib/apt/lists/* \
+    && python3 -m pip install --upgrade pip setuptools wheel
+
+# Create a symlink for python
+RUN ln -sf /usr/bin/python3 /usr/bin/python
+
+# Set Python environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=off \
+    PIP_DISABLE_PIP_VERSION_CHECK=on
+
+# Install Flet and Flutter dependencies
+# Flet requires Flutter for building native apps
+ARG FLUTTER_VERSION=3.19.5
+ARG FLUTTER_CHANNEL=stable
+
+# Install Flutter SDK (required for Flet to build Flutter apps)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    unzip \
+    git \
+    xz-utils \
+    libglu1-mesa \
+    libxi6 \
+    libxrender1 \
+    libxxf86vm1 \
+    libxrandr2 \
+    libxcursor1 \
+    libxinerama1 \
+    libxext6 \
+    libgtk-3-0 \
+    libblkid1 \
+    liblz4-1 \
+    liblzma5 \
+    liblzma-dev \
+    libzstd1 \
+    libncurses5 \
+    libncursesw5 \
+    libreadline7 \
+    libsqlite3-0 \
+    libssl3 \
+    wget \
+    gnupg \
+    lsb-release \
+    software-properties-common \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Flutter SDK
+RUN mkdir -p /opt/flutter && \
+    cd /opt/flutter && \
+    git clone https://github.com/flutter/flutter.git --branch ${FLUTTER_CHANNEL} --depth 1 . && \
+    bin/flutter --version && \
+    bin/flutter config --no-analytics && \
+    bin/flutter precache
+
+# Install Android SDK and tools (for building Android apps with Flet)
+ARG ANDROID_SDK_VERSION=34
+ARG ANDROID_BUILD_TOOLS_VERSION=34.0.0
+
+RUN mkdir -p /opt/android-sdk/cmdline-tools && \
+    cd /opt/android-sdk/cmdline-tools && \
+    wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip && \
+    unzip -q cmdline-tools.zip && \
+    mv cmdline-tools latest && \
+    rm cmdline-tools.zip
+
+# Set up Android SDK environment
+ENV ANDROID_SDK_ROOT=/opt/android-sdk
+ENV PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools
+
+# Install Android SDK components
+RUN yes | sdkmanager --licenses && \
+    sdkmanager "platforms;android-${ANDROID_SDK_VERSION}" && \
+    sdkmanager "build-tools;${ANDROID_BUILD_TOOLS_VERSION}" && \
+    sdkmanager "platform-tools"
+
+# Accept Android licenses (required for Flet/Flutter)
+ENV ANDROID_LICENSE_AGREEMENT=yes
+
+# Install web dependencies (for Flet web apps)
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Chrome for Flutter Web testing
+RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - && \
+    echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list && \
+    apt-get update && apt-get install -y --no-install-recommends google-chrome-stable && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create symlinks for Flutter and Dart
+RUN ln -sf /opt/flutter/bin/flutter /usr/local/bin/flutter && \
+    ln -sf /opt/flutter/bin/dart /usr/local/bin/dart
+
+# Set up Flutter environment variables
+ENV FLUTTER_HOME=/opt/flutter
+ENV PATH=$PATH:$FLUTTER_HOME/bin:$FLUTTER_HOME/bin/cache/dart-sdk/bin
+ENV PUB_CACHE=/opt/flutter/.pub-cache
+
+# Install Flet Python package and Flutter packages
+# Flet SDK for building cross-platform apps
+RUN pip install --no-cache-dir flet==0.22.0
+
+# Pre-install common Flutter packages needed by Flet
+RUN flutter pub global activate dart_style && \
+    flutter pub global activate linter
+
+# Create directories and set permissions
+RUN mkdir -p /opt/flutter/.pub-cache && \
+    chown -R runner:runner /opt/flutter && \
+    chown -R runner:runner /opt/android-sdk && \
+    chown -R runner:runner /opt/flutter/.pub-cache
+
+# Verify installations
+RUN python3 --version && \
+    pip3 --version && \
+    flutter --version && \
+    dart --version && \
+    node --version && \
+    google-chrome --version && \
+    python3 -c "import flet; print(f'Flet version: {flet.__version__}')"
+
+# Labels
+LABEL org.opencontainers.image.description="Flet (Python to Flutter) language pack for GitHub Actions runners" \
+      org.opencontainers.image.version="1.0.0" \
+      org.opencontainers.image.flet.version="0.22.0" \
+      org.opencontainers.image.flutter.version="3.19.5" \
+      org.opencontainers.image.size="~3.5GB"
+
+USER runner
+WORKDIR /actions-runner

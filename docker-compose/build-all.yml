@@ -78,6 +78,18 @@ services:
       - flutter
       - language
 
+  flet-pack:
+    build:
+      context: ../
+      dockerfile: docker/linux/language-packs/flet/Dockerfile.flet
+    image: gh-runner:flet-pack
+    depends_on:
+      - base
+    profiles:
+      - build
+      - flet
+      - language
+
   # Composite images
   cpp-only:
     build:
@@ -128,6 +140,18 @@ services:
       - flutter
       - composite
 
+  flet-only:
+    build:
+      context: ../
+      dockerfile: docker/linux/composite/Dockerfile.flet-only
+    image: gh-runner:flet-only
+    depends_on:
+      - flet-pack
+    profiles:
+      - build
+      - flet
+      - composite
+
   full-stack:
     build:
       context: ../
@@ -139,6 +163,7 @@ services:
       - nodejs-pack
       - go-pack
       - flutter-pack
+      - flet-pack
     profiles:
       - build
       - full

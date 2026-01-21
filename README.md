@@ -32,6 +32,7 @@ Base Image (300MB)
         ├── python-only (450MB)
         ├── web-stack (580MB)
         ├── flutter-only (2.3GB)
+        ├── flet-only (3.8GB)
         └── full-stack (2.5GB)
 ```
 
@@ -53,6 +54,7 @@ github-runner/
 │   ├── linux-python.yml
 │   ├── linux-web.yml
 │   ├── linux-flutter.yml      # Flutter development
+│   ├── linux-flet.yml         # Flet (Python to Flutter) development
 │   ├── linux-full.yml
 │   └── build-all.yml
 ├── docs/
@@ -95,6 +97,7 @@ Based on your project needs:
 | **Python/ML** | `docker-compose -f docker-compose/linux-python.yml up -d` | 450MB | ~2.5 min |
 | **Web (Node+Go)** | `docker-compose -f docker-compose/linux-web.yml up -d` | 580MB | ~3.5 min |
 | **Flutter** | `docker-compose -f docker-compose/linux-flutter.yml up -d` | 2.3GB | ~5 min |
+| **Flet (Python→Flutter)** | `docker-compose -f docker-compose/linux-flet.yml up -d` | 3.8GB | ~6 min |
 | **Multiple Langs** | `docker-compose -f docker-compose/linux-full.yml up -d` | 2.5GB | ~8 min |
 | **Minimal** | `docker-compose -f docker-compose/linux-base.yml up -d` | 300MB | ~2 min |
 
@@ -173,20 +176,41 @@ jobs:
         with:
           name: app-release-apk
           path: build/app/outputs/apk/release/app-release.apk
+```
 
-  build-ios:
-    runs-on: [self-hosted, linux, flutter]
+### Flet Development (Python→Flutter)
+```yaml
+name: Flet Build
+on: [push]
+
+jobs:
+  build-android:
+    runs-on: [self-hosted, linux, flet, python]
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Flutter
-        run: flutter pub get
-      - name: Build iOS
-        run: flutter build ios --release --no-codesign
-      - name: Upload iOS Build
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+      - name: Build Flet Android app
+        run: flet build apk --release
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-release-ios
-          path: build/ios/iphoneos/Runner.app
+          name: flet-app-release-apk
+          path: build/android/app-release.apk
+
+  build-web:
+    runs-on: [self-hosted, linux, flet, python]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+      - name: Build Flet Web app
+        run: flet build web --release
+      - name: Upload Web Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: flet-app-release-web
+          path: build/web/**
 ```
 
 ## 📚 Documentation
@@ -206,6 +230,7 @@ jobs:
 | **Python Only** | `gh-runner:python-only` | 450MB | Python/ML/AI, data science |
 | **Web Stack** | `gh-runner:web-stack` | 580MB | Node.js + Go web development |
 | **Flutter Only** | `gh-runner:flutter-only` | 2.3GB | Flutter/Dart mobile development (Android/iOS) |
+| **Flet Only** | `gh-runner:flet-only` | 3.8GB | Flet (Python→Flutter) mobile/web development |
 | **Full Stack** | `gh-runner:full-stack` | 2.5GB | All languages (legacy support) |
 
 ## 🔧 Environment Variables
@@ -349,9 +374,13 @@ docker build -f docker/linux/composite/Dockerfile.cpp-only \
 **Best for**: Flutter apps, cross-platform mobile development (Android/iOS)
 **Tools**: Flutter 3.19, Dart 3.3, Android SDK, Chrome for web testing
 
-### 5. Full Stack (Legacy)
+### 5. Flet (Python→Flutter) Development
+**Best for**: Cross-platform apps built with Python, mobile + web
+**Tools**: Flet 0.22.0, Python 3.x, Flutter 3.19, Android SDK
+
+### 6. Full Stack (Legacy)
 **Best for**: Migration from monolith, maximum compatibility
-**Tools**: All languages (Python, C++, Node.js, Go, Flutter)
+**Tools**: All languages (Python, C++, Node.js, Go, Flutter, Flet)
 
 ## 📊 Cost Analysis
 
@@ -426,8 +455,8 @@ docker buildx build \
 ### Core Components
 - ✅ Base image with Ubuntu 22.04
 - ✅ GitHub Actions runner (v2.32.0)
-- ✅ Language packs (5 languages: C++, Python, Node.js, Go, Flutter)
-- ✅ Composite images (5 combinations: cpp-only, python-only, web-stack, flutter-only, full-stack)
+- ✅ Language packs (6 languages: C++, Python, Node.js, Go, Flutter, Flet)
+- ✅ Composite images (6 combinations: cpp-only, python-only, web-stack, flutter-only, flet-only, full-stack)
 - ✅ Docker Compose configurations
 - ✅ Comprehensive documentation
 
@@ -440,10 +469,12 @@ docker buildx build \
 | **gh-runner:nodejs-pack** | 180MB | Language pack (Node.js tools) |
 | **gh-runner:go-pack** | 100MB | Language pack (Go tools) |
 | **gh-runner:flutter-pack** | 2.0GB | Language pack (Flutter/Dart tools) |
+| **gh-runner:flet-pack** | 3.5GB | Language pack (Flet/Python tools) |
 | **gh-runner:cpp-only** | 550MB | C++ development |
 | **gh-runner:python-only** | 450MB | Python/ML development |
 | **gh-runner:web-stack** | 580MB | Node.js + Go web dev |
 | **gh-runner:flutter-only** | 2.3GB | Flutter mobile dev |
+| **gh-runner:flet-only** | 3.8GB | Flet (Python→Flutter) dev |
 | **gh-runner:full-stack** | 2.5GB | All languages (legacy) |
 
 ### Language Support
@@ -452,6 +483,7 @@ docker buildx build \
 - ✅ **Node.js**: Node.js 20, npm, yarn, pnpm
 - ✅ **Go**: Go 1.22 toolchain
 - ✅ **Flutter**: Flutter 3.19, Dart 3.3, Android SDK
+- ✅ **Flet**: Flet 0.22.0 (Python→Flutter framework)
 - ⏳ Java (planned)
 - ⏳ Rust (planned)
 - ⏳ .NET (planned)

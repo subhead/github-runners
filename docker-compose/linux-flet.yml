@@ -1,0 +1,145 @@
+# docker-compose/linux-flet.yml
+# Flet (Python to Flutter) GitHub Actions runner configuration
+# Designed for building cross-platform apps with Flet framework
+
+version: '3.8'
+
+networks:
+  github-runners:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+services:
+  flet-runner:
+    # Build the Flet only composite image
+    build:
+      context: ../
+      dockerfile: docker/linux/composite/Dockerfile.flet-only
+      target: gh-runner:flet-only
+      # Optional: Build arguments
+      args:
+        RUNNER_VERSION: 2.32.0
+        FLUTTER_VERSION: 3.19.5
+        FLUTTER_CHANNEL: stable
+        ANDROID_SDK_VERSION: 34
+        ANDROID_BUILD_TOOLS_VERSION: 34.0.0
+    image: gh-runner:flet-only
+    container_name: github-flet-runner
+    hostname: flet-runner
+
+    # Resource limits for Flet builds (Flutter compilation is memory intensive)
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 8G
+        reservations:
+          cpus: '2.0'
+          memory: 4G
+
+    # Memory and CPU limits
+    mem_limit: 8g
+    mem_reservation: 4g
+    cpus: '4.0'
+    cpu_shares: 1024
+
+    # Environment variables (REQUIRED)
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN:?ERROR: GITHUB_TOKEN environment variable is required}
+      - GITHUB_REPOSITORY=${GITHUB_REPOSITORY:?ERROR: GITHUB_REPOSITORY environment variable is required}
+      - RUNNER_NAME=${RUNNER_NAME:-flet-runner-01}
+      - RUNNER_LABELS=${RUNNER_LABELS:-linux,flet,python,flutter,flutter,dart,mobile}
+      - RUNNER_GROUP=${RUNNER_GROUP:-Default}
+      - RUNNER_WORKDIR=${RUNNER_WORKDIR:-_work}
+      - RUNNER_AS_ROOT=${RUNNER_AS_ROOT:-false}
+      - RUNNER_REPLACE_EXISTING=${RUNNER_REPLACE_EXISTING:-false}
+
+    # Optional environment variables for Flet specific configuration
+      - FLUTTER_HOME=/opt/flutter
+      - ANDROID_SDK_ROOT=/opt/android-sdk
+      - ANDROID_LICENSE_AGREEMENT=yes
+      - PUB_CACHE=/opt/flutter/.pub-cache
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+
+    # Volumes
+    volumes:
+      # Docker socket for container builds (read-only for security)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+      # Persistent runner data
+      - ./data/flet-runner:/actions-runner
+
+      # Flet/Python package cache
+      - ./data/flet-python-cache:/home/runner/.cache/pip
+
+      # Flutter pub cache (shared between builds)
+      - ./data/flet-pub-cache:/opt/flutter/.pub-cache
+
+      # Flutter SDK cache (for faster builds)
+      - ./data/flet-flutter-cache:/opt/flutter/bin/cache
+
+      # Android SDK data (cache downloads)
+      - ./data/flet-android-sdk:/opt/android-sdk
+
+      # Optional: Source code mounting for local development
+      # - /path/to/your/flet/project:/workspace:ro
+
+    # Network configuration
+    networks:
+      - github-runners
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service"
+        env: "os,customer"
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import flet; print(flet.__version__)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    # Labels for monitoring
+    labels:
+      - "service=github-runner"
+      - "language=flet"
+      - "language=python"
+      - "language=flutter"
+      - "role=build"
+      - "environment=production"
+
+    # User configuration
+    user: "1001:1001"
+
+    # Depends on
+    depends_on:
+      - # Add any dependencies if needed
+
+# Profile for selective deployment
+# profiles:
+#   - flet
+#   - python
+#   - flutter
+#   - github

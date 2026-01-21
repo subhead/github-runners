@@ -1,0 +1,64 @@
+# docker/linux/composite/Dockerfile.flet-only
+# Flet (Python to Flutter) runner - for building Flet applications
+# Size: ~3.8GB (Base 300MB + Python 150MB + Flutter 2.0GB + Flet 150MB + extras)
+
+FROM gh-runner:linux-base
+
+# Copy Python toolchain from Python pack
+COPY --from=gh-runner:python-pack /usr/bin/python3 /usr/bin/python3
+COPY --from=gh-runner:python-pack /usr/bin/python3.10 /usr/bin/python3.10
+COPY --from=gh-runner:python-pack /usr/local/bin/pip3 /usr/local/bin/pip3
+COPY --from=gh-runner:python-pack /usr/local/bin/pip /usr/local/bin/pip
+COPY --from=gh-runner:python-pack /usr/lib/python3.10 /usr/lib/python3.10
+COPY --from=gh-runner:python-pack /usr/local/lib/python3.10 /usr/local/lib/python3.10
+
+# Copy Flutter/Dart toolchain from Flutter pack
+COPY --from=gh-runner:flutter-pack /opt/flutter /opt/flutter
+COPY --from=gh-runner:flutter-pack /opt/android-sdk /opt/android-sdk
+COPY --from=gh-runner:flutter-pack /usr/lib/x86_64-linux-gnu/ /usr/lib/x86_64-linux-gnu/
+
+# Copy Flet packages from Flet pack
+COPY --from=gh-runner:flet-pack /usr/local/lib/python3.10/site-packages/flet /usr/local/lib/python3.10/site-packages/flet
+
+# Create symlinks for Python, Flutter, and Dart
+RUN ln -sf /usr/bin/python3 /usr/bin/python && \
+    ln -sf /opt/flutter/bin/flutter /usr/local/bin/flutter && \
+    ln -sf /opt/flutter/bin/dart /usr/local/bin/dart
+
+# Set environment variables
+ENV FLUTTER_HOME=/opt/flutter
+ENV ANDROID_SDK_ROOT=/opt/android-sdk
+ENV PATH=$PATH:$FLUTTER_HOME/bin:$FLUTTER_HOME/bin/cache/dart-sdk/bin:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools
+ENV PUB_CACHE=/opt/flutter/.pub-cache
+ENV ANDROID_LICENSE_AGREEMENT=yes
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# Set up Chrome for Flutter Web testing
+RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub 2>/dev/null | apt-key add - 2>/dev/null && \
+    echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google.list && \
+    apt-get update && apt-get install -y --no-install-recommends google-chrome-stable && \
+    rm -rf /var/lib/apt/lists/*
+
+# Verify all installations
+RUN python3 --version && \
+    pip3 --version && \
+    flutter --version && \
+    dart --version && \
+    google-chrome --version && \
+    python3 -c "import flet; print(f'Flet version: {flet.__version__}')"
+
+# Environment variables for Flet development
+ENV BUILD_STACK=flet \
+    FLET_ENV=enabled \
+    PYTHON_ENV=enabled \
+    FLUTTER_ENV=enabled
+
+# Labels
+LABEL org.opencontainers.image.description="Flet (Python to Flutter) GitHub Actions runner" \
+      org.opencontainers.image.version="1.0.0" \
+      org.opencontainers.image.tags="flet,python,flutter,dart,mobile,web" \
+      org.opencontainers.image.size="~3.8GB"
+
+USER runner
+WORKDIR /actions-runner
