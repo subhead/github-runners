@@ -4,6 +4,9 @@
 
 FROM gh-runner:linux-base
 
+# Switch to root for package installation
+USER root
+
 # Copy Python toolchain from Python pack
 COPY --from=gh-runner:python-pack /usr/bin/python3 /usr/bin/python3
 COPY --from=gh-runner:python-pack /usr/bin/python3.10 /usr/bin/python3.10

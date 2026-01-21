@@ -4,6 +4,9 @@
 
 FROM gh-runner:linux-base AS python-pack
 
+# Switch to root for package installation
+USER root
+
 # Prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
 

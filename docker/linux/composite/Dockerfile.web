@@ -21,7 +21,8 @@ COPY --from=gh-runner:go-pack /go /go
 RUN ln -sf /usr/local/go/bin/go /usr/bin/go && \
     ln -sf /usr/local/go/bin/gofmt /usr/bin/gofmt
 
-# Install web-specific build tools
+# Install web-specific build tools (as root)
+USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nginx \
     webpack \

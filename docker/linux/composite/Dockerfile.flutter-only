@@ -4,6 +4,9 @@
 
 FROM gh-runner:linux-base
 
+# Switch to root for package installation
+USER root
+
 # Copy Flutter/Dart toolchain from the Flutter pack
 COPY --from=gh-runner:flutter-pack /opt/flutter /opt/flutter
 COPY --from=gh-runner:flutter-pack /opt/android-sdk /opt/android-sdk
