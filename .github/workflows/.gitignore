@@ -1,0 +1,68 @@
+# Ignore build artifacts
+build/
+dist/
+bin/
+.out/
+.next/
+.output/
+.cache/
+
+# Ignore test artifacts
+coverage/
+test-results/
+htmlcov/
+reports/
+
+# Ignore Docker artifacts
+*.tar.gz
+*.tar
+*.zip
+
+# Ignore coverage reports
+*.coverage.xml
+*.lcov
+*.gcda
+*.gcno
+
+# Ignore environment files
+.env
+.env.local
+.env.*.local
+
+# Ignore IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Ignore log files
+*.log
+logs/
+
+# Ignore temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+
+# Ignore Node.js dependencies (if applicable)
+node_modules/
+
+# Ignore Python dependencies (if applicable)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg

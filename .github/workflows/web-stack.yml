@@ -1,0 +1,573 @@
+# Web Development Workflow (Node.js + Go)
+# Uses: gh-runner:web-stack (~580MB)
+# Runner labels: linux, node, go, web
+
+name: Web Development Stack
+
+on:
+  # Trigger on push to main or develop branches
+  push:
+    branches:
+      - main
+      - develop
+      - staging
+  # Trigger on pull requests
+  pull_request:
+    branches:
+      - main
+      - develop
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+# Environment variables
+env:
+  NODE_VERSION: '20'
+  GO_VERSION: '1.22'
+  NPM_REGISTRY: 'https://registry.npmjs.org'
+  GOPROXY: 'https://proxy.golang.org,direct'
+
+jobs:
+  # ============================================
+  # NODE.JS TEST JOB
+  # ============================================
+  test-node:
+    runs-on: [self-hosted, linux, node]
+    strategy:
+      matrix:
+        node-version: [18, 20]
+    continue-on-error: false
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup Node.js
+      # ============================================
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          registry-url: ${{ env.NPM_REGISTRY }}
+
+      # ============================================
+      # Cache Node.js dependencies
+      # ============================================
+      - name: Cache Node.js dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      # ============================================
+      # Install dependencies
+      # ============================================
+      - name: Install dependencies
+        run: npm ci
+
+      # ============================================
+      # Run linters
+      # ============================================
+      - name: Run linters
+        run: |
+          npm run lint || echo "Linting completed with warnings"
+
+      # ============================================
+      # Run tests
+      # ============================================
+      - name: Run tests
+        run: npm test
+
+      # ============================================
+      # Build
+      # ============================================
+      - name: Build
+        run: npm run build
+
+      # ============================================
+      # Upload build artifacts
+      # ============================================
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-build-${{ matrix.node-version }}-${{ github.run_id }}
+          path: |
+            dist/
+            build/
+            .next/
+            out/
+          retention-days: 7
+
+  # ============================================
+  # GO TEST JOB
+  # ============================================
+  test-go:
+    runs-on: [self-hosted, linux, go]
+    strategy:
+      matrix:
+        go-version: ['1.21', '1.22']
+    continue-on-error: false
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup Go
+      # ============================================
+      - name: Setup Go ${{ matrix.go-version }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: true
+
+      # ============================================
+      # Install dependencies
+      # ============================================
+      - name: Install dependencies
+        run: go mod download
+
+      # ============================================
+      # Run tests
+      # ============================================
+      - name: Run tests
+        run: go test ./... -race -coverprofile=coverage.out -covermode=atomic
+
+      # ============================================
+      # Generate coverage report
+      # ============================================
+      - name: Generate coverage report
+        run: go tool cover -html=coverage.out -o coverage.html
+
+      # ============================================
+      # Upload coverage report
+      # ============================================
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage-${{ matrix.go-version }}-${{ github.run_id }}
+          path: |
+            coverage.out
+            coverage.html
+          retention-days: 7
+
+      # ============================================
+      # Build
+      # ============================================
+      - name: Build
+        run: |
+          go build -o bin/app ./cmd/app
+          go build -o bin/server ./cmd/server
+
+      # ============================================
+      # Upload build artifacts
+      # ============================================
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-build-${{ matrix.go-version }}-${{ github.run_id }}
+          path: bin/
+          retention-days: 7
+
+  # ============================================
+  # FULL STACK JOB (Node + Go)
+  # ============================================
+  full-stack-test:
+    runs-on: [self-hosted, linux, node, go]
+    needs: [test-node, test-go]
+    continue-on-error: false
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup Node.js
+      # ============================================
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: ${{ env.NPM_REGISTRY }}
+
+      # ============================================
+      # Cache Node.js dependencies
+      # ============================================
+      - name: Cache Node.js dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+
+      # ============================================
+      # Setup Go
+      # ============================================
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      # ============================================
+      # Install Node.js dependencies
+      # ============================================
+      - name: Install Node.js dependencies
+        run: npm ci
+
+      # ============================================
+      # Install Go dependencies
+      # ============================================
+      - name: Install Go dependencies
+        run: go mod download
+
+      # ============================================
+      # Run integration tests
+      # ============================================
+      - name: Run integration tests
+        env:
+          NODE_ENV: test
+          GO_ENV: test
+        run: |
+          # Run tests in parallel
+          npm test -- --runInBand &
+          NODE_PID=$!
+          go test ./... &
+          GO_PID=$!
+          wait $NODE_PID
+          wait $GO_PID
+
+      # ============================================
+      # Build frontend
+      # ============================================
+      - name: Build frontend
+        run: npm run build
+
+      # ============================================
+      # Build backend
+      # ============================================
+      - name: Build backend
+        run: go build -o bin/server ./cmd/server
+
+  # ============================================
+  # DOCKER BUILD JOB
+  # ============================================
+  build-docker:
+    runs-on: [self-hosted, linux, node, go, docker]
+    needs: [full-stack-test]
+    strategy:
+      matrix:
+        service: [frontend, backend]
+        include:
+          - service: frontend
+            context: frontend
+            dockerfile: frontend/Dockerfile
+          - service: backend
+            context: backend
+            dockerfile: backend/Dockerfile
+    continue-on-error: false
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup Docker Buildx
+      # ============================================
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ============================================
+      # Login to Docker Hub
+      # ============================================
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # ============================================
+      # Extract metadata
+      # ============================================
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKER_USERNAME }}/myapp-${{ matrix.service }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # ============================================
+      # Build and push Docker image
+      # ============================================
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/myapp-${{ matrix.service }}:buildcache
+          cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/myapp-${{ matrix.service }}:buildcache,mode=max
+
+      # ============================================
+      # Run security scan
+      # ============================================
+      - name: Run security scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ secrets.DOCKER_USERNAME }}/myapp-${{ matrix.service }}:latest'
+          format: 'sarif'
+          output: 'trivy-${{ matrix.service }}.sarif'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-${{ matrix.service }}.sarif'
+
+  # ============================================
+  # E2E TEST JOB
+  # ============================================
+  e2e-test:
+    runs-on: [self-hosted, linux, node, docker]
+    needs: build-docker
+    environment: staging
+    continue-on-error: false
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup Node.js
+      # ============================================
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # ============================================
+      # Install Playwright
+      # ============================================
+      - name: Install Playwright
+        run: |
+          npx playwright install --with-deps chromium
+
+      # ============================================
+      # Start test environment
+      # ============================================
+      - name: Start test environment
+        run: |
+          docker-compose -f docker-compose.test.yml up -d
+          sleep 30  # Wait for services to be ready
+
+      # ============================================
+      # Run E2E tests
+      # ============================================
+      - name: Run E2E tests
+        env:
+          BASE_URL: http://localhost:3000
+        run: |
+          npm run test:e2e
+
+      # ============================================
+      # Upload test artifacts
+      # ============================================
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-test-results-${{ github.run_id }}
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
+
+      # ============================================
+      # Stop test environment
+      # ============================================
+      - name: Stop test environment
+        if: always()
+        run: |
+          docker-compose -f docker-compose.test.yml down -v
+
+  # ============================================
+  # DEPLOY JOB
+  # ============================================
+  deploy:
+    runs-on: [self-hosted, linux, node, go]
+    needs: [full-stack-test, build-docker, e2e-test]
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging')
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Download frontend artifact
+      # ============================================
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v4
+        with:
+          pattern: node-build-*
+          merge-multiple: true
+          path: frontend/
+
+      # ============================================
+      # Download backend artifact
+      # ============================================
+      - name: Download backend artifact
+        uses: actions/download-artifact@v4
+        with:
+          pattern: go-build-*
+          merge-multiple: true
+          path: backend/
+
+      # ============================================
+      # Deploy to server
+      # ============================================
+      - name: Deploy to server
+        run: |
+          echo "Deployment script would go here"
+          # Add your deployment script
+          # ./deploy-web.sh
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          NODE_ENV: production
+          GO_ENV: production
+
+      # ============================================
+      # Run smoke tests
+      # ============================================
+      - name: Run smoke tests
+        run: |
+          echo "Smoke tests would go here"
+          # Add your smoke test script
+          # ./smoke-test.sh
+
+  # ============================================
+  # LINT JOB
+  # ============================================
+  lint:
+    runs-on: [self-hosted, linux, node, go]
+    continue-on-error: true
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup Node.js
+      # ============================================
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # ============================================
+      # Setup Go
+      # ============================================
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      # ============================================
+      # Install Node.js dependencies
+      # ============================================
+      - name: Install Node.js dependencies
+        run: npm ci
+
+      # ============================================
+      # Install Go dependencies
+      # ============================================
+      - name: Install Go dependencies
+        run: go mod download
+
+      # ============================================
+      # Run Node.js linters
+      # ============================================
+      - name: Run Node.js linters
+        run: |
+          npm run lint || echo "Node.js linting completed with warnings"
+
+      # ============================================
+      # Run Go linters
+      # ============================================
+      - name: Run Go linters
+        run: |
+          go vet ./...
+          gofmt -l .
+
+  # ============================================
+  # POST-BUILD CLEANUP
+  # ============================================
+  cleanup:
+    runs-on: [self-hosted, linux, node, go]
+    needs: [test-node, test-go, full-stack-test, build-docker, e2e-test, lint]
+    if: always()
+
+    steps:
+      - name: Cleanup build artifacts
+        run: |
+          echo "Cleaning up build artifacts..."
+          rm -rf dist/ build/ bin/ .next/ out/ coverage.out coverage.html
+          echo "Cleanup complete"
+
+  # ============================================
+  # NOTIFICATION JOB
+  # ============================================
+  notify:
+    runs-on: [self-hosted, linux, node, go]
+    needs: [test-node, test-go, full-stack-test, e2e-test]
+    if: always()
+
+    steps:
+      - name: Send notification
+        run: |
+          echo "Web Stack CI/CD pipeline completed"
+          echo "Node.js test status: ${{ needs.test-node.result }}"
+          echo "Go test status: ${{ needs.test-go.result }}"
+          echo "Full stack test status: ${{ needs.full-stack-test.result }}"
+          echo "E2E test status: ${{ needs.e2e-test.result }}"
+          # Add your notification logic here
+          # curl -X POST $SLACK_WEBHOOK_URL -d '{"text":"Web Stack CI complete"}'

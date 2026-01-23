@@ -1,0 +1,338 @@
+# C++ Build and Test Workflow
+# Uses: gh-runner:cpp-only (~550MB)
+# Runner labels: linux, cpp, build
+
+name: C++ Build and Test
+
+on:
+  # Trigger on push to main or develop branches
+  push:
+    branches:
+      - main
+      - develop
+  # Trigger on pull requests
+  pull_request:
+    branches:
+      - main
+      - develop
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: true
+        default: 'release'
+        type: choice
+        options:
+          - debug
+          - release
+          - both
+
+# Cache key based on runner OS and source files
+env:
+  BUILD_TYPE: ${{ github.event.inputs.build_type || 'release' }}
+
+jobs:
+  # ============================================
+  # BUILD JOB
+  # ============================================
+  build:
+    runs-on: [self-hosted, linux, cpp]
+    strategy:
+      matrix:
+        compiler: [gcc, clang]
+        include:
+          - compiler: gcc
+            cc: gcc
+            cxx: g++
+          - compiler: clang
+            cc: clang
+            cxx: clang++
+    continue-on-error: false
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # ============================================
+      # Configure build environment
+      # ============================================
+      - name: Configure build environment
+        run: |
+          echo "Build type: ${BUILD_TYPE}"
+          echo "Compiler: ${{ matrix.compiler }}"
+          echo "CC=${{ matrix.cc }}" >> $GITHUB_ENV
+          echo "CXX=${{ matrix.cxx }}" >> $GITHUB_ENV
+          echo "CMAKE_BUILD_TYPE=$(echo $BUILD_TYPE | tr '[:lower:]' '[:upper:]')" >> $GITHUB_ENV
+
+      # ============================================
+      # Configure CMake
+      # ============================================
+      - name: Configure CMake
+        run: |
+          cmake -B build \
+            -DCMAKE_C_COMPILER=${{ matrix.cc }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} \
+            -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            .
+
+      # ============================================
+      # Build
+      # ============================================
+      - name: Build
+        run: cmake --build build --parallel $(nproc)
+
+      # ============================================
+      # Run unit tests
+      # ============================================
+      - name: Run unit tests
+        run: |
+          if [ -f build/Testing/ ]; then
+            cd build
+            ctest --output-on-failure --parallel $(nproc)
+          else
+            echo "No tests found"
+          fi
+
+      # ============================================
+      # Generate build artifacts
+      # ============================================
+      - name: Package artifacts
+        run: |
+          mkdir -p artifacts
+          if [ -f build/Makefile ] || [ -f build/build.ninja ]; then
+            cp -r build/* artifacts/ 2>/dev/null || true
+          fi
+          # Copy compiled binaries if they exist
+          if [ -d build ] && [ -f build/compile_commands.json ]; then
+            cp build/compile_commands.json artifacts/
+          fi
+
+      # ============================================
+      # Upload artifacts
+      # ============================================
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts-${{ matrix.compiler }}-${{ github.run_id }}
+          path: |
+            artifacts/
+            build/
+            CMakeCache.txt
+          retention-days: 7
+
+  # ============================================
+  # CODE QUALITY JOB
+  # ============================================
+  quality:
+    runs-on: [self-hosted, linux, cpp]
+    needs: build
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Run clang-format check
+      # ============================================
+      - name: Run clang-format
+        run: |
+          # Find all C++ source files
+          find . -type f \( -name "*.cpp" -o -name "*.h" -o -name "*.hpp" -o -name "*.cc" -o -name "*.cxx" \) \
+            -not -path "./build/*" \
+            -not -path "./third_party/*" \
+            -exec clang-format --dry-run --Werror {} \;
+
+      # ============================================
+      # Run clang-tidy (if configured)
+      # ============================================
+      - name: Run clang-tidy
+        run: |
+          if [ -f .clang-tidy ]; then
+            find . -type f \( -name "*.cpp" -o -name "*.cc" \) \
+              -not -path "./build/*" \
+              -not -path "./third_party/*" \
+              -exec clang-tidy --warnings-as-errors=* {} \;
+          fi
+
+      # ============================================
+      # Static analysis
+      # ============================================
+      - name: Static analysis
+        run: |
+          # Run cppcheck if available
+          if command -v cppcheck &> /dev/null; then
+            cppcheck --enable=all --error-exitcode=1 --quiet \
+              --inline-suppr \
+              -I include/ \
+              src/ 2>/dev/null || echo "cppcheck warnings found (non-fatal)"
+          fi
+
+  # ============================================
+  # SANITIZERS JOB (Optional)
+  # ============================================
+  sanitizers:
+    runs-on: [self-hosted, linux, cpp]
+    needs: build
+    strategy:
+      matrix:
+        sanitizer: [address, undefined]
+        compiler: [gcc]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Configure with sanitizer
+      # ============================================
+      - name: Configure with ${{ matrix.sanitizer }} sanitizer
+        run: |
+          cmake -B build-${{ matrix.sanitizer }} \
+            -DCMAKE_C_COMPILER=${{ matrix.compiler }} \
+            -DCMAKE_CXX_COMPILER=g++ \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_FLAGS="-fsanitize=${{ matrix.sanitizer }} -g -O1" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=${{ matrix.sanitizer }}" \
+            .
+
+      # ============================================
+      # Build with sanitizer
+      # ============================================
+      - name: Build with ${{ matrix.sanitizer }}
+        run: cmake --build build-${{ matrix.sanitizer }}
+
+      # ============================================
+      # Run tests with sanitizer
+      # ============================================
+      - name: Run tests with ${{ matrix.sanitizer }}
+        run: |
+          cd build-${{ matrix.sanitizer }}
+          ctest --output-on-failure --parallel $(nproc)
+          # Sanitizers will abort on errors, which ctest will catch
+
+  # ============================================
+  # PACKAGE JOB
+  # ============================================
+  package:
+    runs-on: [self-hosted, linux, cpp]
+    needs: [build, quality]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Download artifacts
+      # ============================================
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: build-artifacts-gcc-*
+          merge-multiple: true
+
+      # ============================================
+      # Create release tarball
+      # ============================================
+      - name: Create release tarball
+        run: |
+          VERSION=$(git describe --tags --always --dirty || echo "dev")
+          tar -czf release-${VERSION}.tar.gz \
+            --exclude='*.o' \
+            --exclude='*.a' \
+            --exclude='*.so' \
+            build/
+          echo "RELEASE_VERSION=${VERSION}" >> $GITHUB_ENV
+
+      # ============================================
+      # Upload release
+      # ============================================
+      - name: Upload release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-${{ env.RELEASE_VERSION }}.tar.gz
+          tag_name: v${{ env.RELEASE_VERSION }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ============================================
+  # DEPLOY JOB (Optional)
+  # ============================================
+  deploy:
+    runs-on: [self-hosted, linux, cpp]
+    needs: [package]
+    environment: production
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Deploy to server
+      # ============================================
+      - name: Deploy to server
+        run: |
+          echo "Deployment would happen here"
+          # Add your deployment script
+          # ./deploy.sh
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+
+  # ============================================
+  # POST-BUILD CLEANUP
+  # ============================================
+  cleanup:
+    runs-on: [self-hosted, linux, cpp]
+    needs: [build, quality, sanitizers, package, deploy]
+    if: always()
+
+    steps:
+      - name: Cleanup build artifacts
+        run: |
+          echo "Cleaning up build artifacts..."
+          rm -rf build build-* artifacts release-*.tar.gz
+          echo "Cleanup complete"
+
+  # ============================================
+  # NOTIFICATION JOB
+  # ============================================
+  notify:
+    runs-on: [self-hosted, linux, cpp]
+    needs: [build, quality]
+    if: always()
+
+    steps:
+      - name: Send notification
+        run: |
+          STATUS=${{ needs.build.result }}-${{ needs.quality.result }}
+          echo "Build status: $STATUS"
+          if [ "$STATUS" != "success-success" ]; then
+            echo "Some jobs failed"
+            # Add your notification logic here
+            # curl -X POST $SLACK_WEBHOOK_URL -d '{"text":"Build failed"}'
+          fi

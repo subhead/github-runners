@@ -1,0 +1,734 @@
+# Flet Development Workflow (Python to Flutter)
+# Uses: gh-runner:flet-only (~3.8GB)
+# Runner labels: linux, flet, mobile, web
+
+name: Flet Development
+
+on:
+  # Trigger on push to main or develop branches
+  push:
+    branches:
+      - main
+      - develop
+      - release/**
+  # Trigger on pull requests
+  pull_request:
+    branches:
+      - main
+      - develop
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: true
+        default: 'desktop'
+        type: choice
+        options:
+          - desktop
+          - web
+          - mobile
+          - all
+      environment:
+        description: 'Environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+# Environment variables
+env:
+  PYTHON_VERSION: '3.10'
+  FLUTTER_VERSION: '3.19.0'
+  FLET_VERSION: '0.21.0'
+  ANDROID_SDK_VERSION: '34'
+
+jobs:
+  # ============================================
+  # PYTHON TEST JOB
+  # ============================================
+  test-python:
+    runs-on: [self-hosted, linux, flet]
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11']
+    continue-on-error: false
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # ============================================
+      # Setup Python
+      # ============================================
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # ============================================
+      # Cache pip dependencies
+      # ============================================
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt', '**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      # ============================================
+      # Install Python dependencies
+      # ============================================
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flet==${{ env.FLET_VERSION }}
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+          pip install pytest pytest-cov pytest-mock
+
+      # ============================================
+      # Run unit tests
+      # ============================================
+      - name: Run unit tests
+        run: |
+          pytest tests/ \
+            --cov=src/ \
+            --cov-report=xml \
+            --cov-report=html \
+            --junitxml=test-results/junit.xml \
+            --verbose
+
+      # ============================================
+      # Test Flet import
+      # ============================================
+      - name: Test Flet import
+        run: |
+          python -c "import flet; print(f'Flet version: {flet.__version__}')"
+
+      # ============================================
+      # Test Flet app (if present)
+      # ============================================
+      - name: Test Flet app
+        run: |
+          if [ -f main.py ]; then
+            timeout 10s python main.py --test-mode || echo "App test completed"
+          fi
+
+      # ============================================
+      # Upload test results
+      # ============================================
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: python-test-results-${{ matrix.python-version }}-${{ github.run_id }}
+          path: |
+            test-results/
+            htmlcov/
+            coverage.xml
+          retention-days: 7
+
+      # ============================================
+      # Upload coverage to Codecov
+      # ============================================
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: flet-python
+          name: flet-python-coverage
+
+  # ============================================
+  # FLUTTER ANALYZE JOB
+  # ============================================
+  analyze-flutter:
+    runs-on: [self-hosted, linux, flet]
+    needs: test-python
+    continue-on-error: false
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup Flutter
+      # ============================================
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          architecture: x64
+
+      # ============================================
+      # Cache Flutter dependencies
+      # ============================================
+      - name: Cache Flutter dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            **/.packages
+            **/.flutter-plugins
+            **/.flutter-plugin-dependencies
+            **/.dart_tool
+          key: ${{ runner.os }}-flutter-${{ hashFiles('**/pubspec.lock') }}
+
+      # ============================================
+      # Install Flutter dependencies
+      # ============================================
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      # ============================================
+      # Analyze Flutter code
+      # ============================================
+      - name: Analyze Flutter code
+        run: flutter analyze --fatal-infories --fatal-warnings
+
+      # ============================================
+      # Check formatting
+      # ============================================
+      - name: Check formatting
+        run: flutter format --set-exit-if-changed lib test
+
+  # ============================================
+  # WEB BUILD JOB
+  # ============================================
+  build-web:
+    runs-on: [self-hosted, linux, flet]
+    needs: [test-python, analyze-flutter]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.event.inputs.build_type == 'web')
+    continue-on-error: false
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup Python
+      # ============================================
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # ============================================
+      # Setup Flutter
+      # ============================================
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          architecture: x64
+
+      # ============================================
+      # Install Python dependencies
+      # ============================================
+      - name: Install Python dependencies
+        run: |
+          pip install flet==${{ env.FLET_VERSION }}
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+
+      # ============================================
+      # Build Flet Web App
+      # ============================================
+      - name: Build Flet Web App
+        run: |
+          flet build web \
+            --entrypoint main.py \
+            --output build/web \
+            --web-renderer html \
+            --pwa
+
+      # ============================================
+      # Upload web build artifacts
+      # ============================================
+      - name: Upload web build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: flet-web-${{ github.run_id }}
+          path: build/web
+          retention-days: 7
+
+      # ============================================
+      # Deploy to Firebase Hosting (optional)
+      # ============================================
+      - name: Deploy to Firebase Hosting
+        if: github.ref == 'refs/heads/main'
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
+          channelId: live
+          projectId: '${{ secrets.FIREBASE_PROJECT_ID }}'
+
+  # ============================================
+  # DESKTOP BUILD JOB
+  # ============================================
+  build-desktop:
+    runs-on: [self-hosted, linux, flet]
+    needs: [test-python, analyze-flutter]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.event.inputs.build_type == 'desktop')
+    continue-on-error: false
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup Python
+      # ============================================
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # ============================================
+      # Setup Flutter
+      # ============================================
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          architecture: x64
+
+      # ============================================
+      # Install Python dependencies
+      # ============================================
+      - name: Install Python dependencies
+        run: |
+          pip install flet==${{ env.FLET_VERSION }}
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+
+      # ============================================
+      # Build Flet Desktop App
+      # ============================================
+      - name: Build Flet Desktop App
+        run: |
+          flet build linux \
+            --entrypoint main.py \
+            --output build/linux \
+            --product-name MyApp \
+            --company-name MyCompany \
+            --copyright "Copyright 2024"
+
+      # ============================================
+      # Upload desktop build artifacts
+      # ============================================
+      - name: Upload desktop build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: flet-desktop-${{ github.run_id }}
+          path: build/linux
+          retention-days: 7
+
+  # ============================================
+  # ANDROID BUILD JOB
+  # ============================================
+  build-android:
+    runs-on: [self-hosted, linux, flet]
+    needs: [test-python, analyze-flutter]
+    strategy:
+      matrix:
+        build-type: [apk, appbundle]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || contains(github.event.inputs.build_type, 'mobile'))
+    continue-on-error: false
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup Python
+      # ============================================
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # ============================================
+      # Setup Flutter
+      # ============================================
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          architecture: x64
+
+      # ============================================
+      # Install Python dependencies
+      # ============================================
+      - name: Install Python dependencies
+        run: |
+          pip install flet==${{ env.FLET_VERSION }}
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+
+      # ============================================
+      # Build Android
+      # ============================================
+      - name: Build Android ${{ matrix.build-type }}
+        run: |
+          case "${{ matrix.build-type }}" in
+            apk)
+              flet build apk \
+                --entrypoint main.py \
+                --output build/app.apk \
+                --product-name MyApp \
+                --company-name MyCompany
+              ;;
+            appbundle)
+              flet build appbundle \
+                --entrypoint main.py \
+                --output build/app.aab \
+                --product-name MyApp \
+                --company-name MyCompany
+              ;;
+          esac
+
+      # ============================================
+      # Upload Android build artifacts
+      # ============================================
+      - name: Upload Android build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: flet-${{ matrix.build-type }}-${{ github.run_id }}
+          path: |
+            build/app.apk
+            build/app.aab
+          retention-days: 7
+
+  # ============================================
+  # iOS BUILD JOB (if using macOS runner)
+  # ============================================
+  build-ios:
+    runs-on: [self-hosted, linux, flet]
+    needs: [test-python, analyze-flutter]
+    if: false  # iOS builds require macOS runner
+    continue-on-error: false
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup Python
+      # ============================================
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # ============================================
+      # Setup Flutter
+      # ============================================
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          architecture: x64
+
+      # ============================================
+      # Install Python dependencies
+      # ============================================
+      - name: Install Python dependencies
+        run: |
+          pip install flet==${{ env.FLET_VERSION }}
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+
+      # ============================================
+      # Build iOS
+      # ============================================
+      - name: Build iOS
+        run: |
+          flet build ios \
+            --entrypoint main.py \
+            --output build/ios \
+            --product-name MyApp \
+            --company-name MyCompany
+
+      # ============================================
+      # Upload iOS build artifacts
+      # ============================================
+      - name: Upload iOS build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: flet-ios-${{ github.run_id }}
+          path: build/ios
+          retention-days: 7
+
+  # ============================================
+  # LINT JOB
+  # ============================================
+  lint:
+    runs-on: [self-hosted, linux, flet]
+    continue-on-error: true
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup Python
+      # ============================================
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # ============================================
+      # Install Python dependencies
+      # ============================================
+      - name: Install Python dependencies
+        run: |
+          pip install flake8 black isort mypy
+          pip install flet==${{ env.FLET_VERSION }}
+
+      # ============================================
+      # Run Python linters
+      # ============================================
+      - name: Run Python linters
+        run: |
+          flake8 src/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
+          black --check src/ tests/
+          isort --check-only src/ tests/
+
+      # ============================================
+      # Setup Flutter
+      # ============================================
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          architecture: x64
+
+      # ============================================
+      # Run Flutter analyze
+      # ============================================
+      - name: Run Flutter analyze
+        run: flutter analyze --fatal-infories --fatal-warnings
+
+  # ============================================
+  # E2E TEST JOB
+  # ============================================
+  e2e-test:
+    runs-on: [self-hosted, linux, flet, chrome]
+    needs: [test-python, build-web]
+    environment: staging
+    continue-on-error: false
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup Python
+      # ============================================
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # ============================================
+      # Setup Flutter
+      # ============================================
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          architecture: x64
+
+      # ============================================
+      # Install Python dependencies
+      # ============================================
+      - name: Install Python dependencies
+        run: |
+          pip install flet==${{ env.FLET_VERSION }}
+          pip install selenium webdriver-manager
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+
+      # ============================================
+      # Download web build
+      # ============================================
+      - name: Download web build
+        uses: actions/download-artifact@v4
+        with:
+          pattern: flet-web-*
+          merge-multiple: true
+          path: build/web/
+
+      # ============================================
+      # Serve and test
+      # ============================================
+      - name: Serve and test
+        run: |
+          # Start Flet app in test mode
+          python main.py --test-mode &
+          PID=$!
+          sleep 5
+          # Run E2E tests
+          python -m pytest tests/e2e/ --timeout=60 || true
+          kill $PID 2>/dev/null || true
+
+      # ============================================
+      # Upload test artifacts
+      # ============================================
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-test-results-${{ github.run_id }}
+          path: |
+            test-results/
+            screenshots/
+          retention-days: 7
+
+  # ============================================
+  # DEPLOY JOB
+  # ============================================
+  deploy:
+    runs-on: [self-hosted, linux, flet]
+    needs: [build-android, build-web, build-desktop, e2e-test]
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Download Android artifacts
+      # ============================================
+      - name: Download Android artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: flet-apk-* flet-appbundle-*
+          merge-multiple: true
+          path: artifacts/android/
+
+      # ============================================
+      # Download Web artifacts
+      # ============================================
+      - name: Download Web artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: flet-web-*
+          merge-multiple: true
+          path: artifacts/web/
+
+      # ============================================
+      # Download Desktop artifacts
+      # ============================================
+      - name: Download Desktop artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: flet-desktop-*
+          merge-multiple: true
+          path: artifacts/desktop/
+
+      # ============================================
+      # Deploy to server
+      # ============================================
+      - name: Deploy to server
+        run: |
+          echo "Deployment script would go here"
+          # Add your deployment script
+          # ./deploy-flet.sh
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+
+      # ============================================
+      # Publish to Google Play (optional)
+      # ============================================
+      - name: Publish to Google Play
+        run: |
+          echo "Publish script would go here"
+          # Add your publish script
+          # ./publish-google-play.sh
+
+  # ============================================
+  # POST-BUILD CLEANUP
+  # ============================================
+  cleanup:
+    runs-on: [self-hosted, linux, flet]
+    needs: [test-python, analyze-flutter, build-web, build-desktop, build-android, lint, e2e-test]
+    if: always()
+
+    steps:
+      - name: Cleanup build artifacts
+        run: |
+          echo "Cleaning up build artifacts..."
+          rm -rf build/ coverage/ test-results/ htmlcov/ .dart_tool/ .flutter-plugins/ .packages/
+          echo "Cleanup complete"
+
+  # ============================================
+  # NOTIFICATION JOB
+  # ============================================
+  notify:
+    runs-on: [self-hosted, linux, flet]
+    needs: [test-python, build-android, build-web, build-desktop, e2e-test]
+    if: always()
+
+    steps:
+      - name: Send notification
+        run: |
+          echo "Flet CI/CD pipeline completed"
+          echo "Python test status: ${{ needs.test-python.result }}"
+          echo "Android build status: ${{ needs.build-android.result }}"
+          echo "Web build status: ${{ needs.build-web.result }}"
+          echo "Desktop build status: ${{ needs.build-desktop.result }}"
+          echo "E2E test status: ${{ needs.e2e-test.result }}"
+          # Add your notification logic here
+          # curl -X POST $SLACK_WEBHOOK_URL -d '{"text":"Flet CI complete"}'

@@ -1,0 +1,641 @@
+# Flutter Mobile Development Workflow
+# Uses: gh-runner:flutter-only (~2GB)
+# Runner labels: linux, flutter, mobile
+
+name: Flutter Mobile Development
+
+on:
+  # Trigger on push to main or develop branches
+  push:
+    branches:
+      - main
+      - develop
+      - release/**
+  # Trigger on pull requests
+  pull_request:
+    branches:
+      - main
+      - develop
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: true
+        default: 'apk'
+        type: choice
+        options:
+          - apk
+          - appbundle
+          - web
+          - all
+      environment:
+        description: 'Environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+# Environment variables
+env:
+  FLUTTER_VERSION: '3.19.0'
+  DART_VERSION: '3.3.0'
+  ANDROID_SDK_VERSION: '34'
+
+jobs:
+  # ============================================
+  # ANALYZE JOB
+  # ============================================
+  analyze:
+    runs-on: [self-hosted, linux, flutter]
+    continue-on-error: false
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # ============================================
+      # Setup Flutter
+      # ============================================
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          architecture: x64
+
+      # ============================================
+      # Cache Flutter dependencies
+      # ============================================
+      - name: Cache Flutter dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            **/.packages
+            **/.flutter-plugins
+            **/.flutter-plugin-dependencies
+            **/.dart_tool
+          key: ${{ runner.os }}-flutter-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-flutter-
+
+      # ============================================
+      # Install dependencies
+      # ============================================
+      - name: Install dependencies
+        run: flutter pub get
+
+      # ============================================
+      # Analyze code
+      # ============================================
+      - name: Analyze code
+        run: flutter analyze --fatal-infories --fatal-warnings
+
+      # ============================================
+      # Check formatting
+      # ============================================
+      - name: Check formatting
+        run: flutter format --set-exit-if-changed lib test
+
+      # ============================================
+      # Run dartdoc
+      # ============================================
+      - name: Generate documentation
+        run: flutter pub run dartdoc --output docs/api
+
+      # ============================================
+      # Upload documentation
+      # ============================================
+      - name: Upload documentation
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-docs-${{ github.run_id }}
+          path: docs/api
+          retention-days: 7
+
+  # ============================================
+  # UNIT TEST JOB
+  # ============================================
+  test:
+    runs-on: [self-hosted, linux, flutter]
+    needs: analyze
+    continue-on-error: false
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup Flutter
+      # ============================================
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          architecture: x64
+
+      # ============================================
+      # Cache Flutter dependencies
+      # ============================================
+      - name: Cache Flutter dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            **/.packages
+            **/.flutter-plugins
+            **/.flutter-plugin-dependencies
+            **/.dart_tool
+          key: ${{ runner.os }}-flutter-${{ hashFiles('**/pubspec.lock') }}
+
+      # ============================================
+      # Install dependencies
+      # ============================================
+      - name: Install dependencies
+        run: flutter pub get
+
+      # ============================================
+      # Run unit tests
+      # ============================================
+      - name: Run unit tests
+        run: |
+          flutter test \
+            --coverage \
+            --reporter json \
+            --test-randomize-ordering-seed random \
+            > test-results.json || true
+
+      # ============================================
+      # Generate coverage report
+      # ============================================
+      - name: Generate coverage report
+        run: |
+          lcov --remove coverage/lcov.info '*/.dart_tool/*' '*/test/*' -o coverage/lcov.info
+          genhtml coverage/lcov.info -o coverage/html
+
+      # ============================================
+      # Upload coverage report
+      # ============================================
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-test-coverage-${{ github.run_id }}
+          path: |
+            coverage/
+            test-results.json
+          retention-days: 7
+
+      # ============================================
+      # Upload to Codecov
+      # ============================================
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage/lcov.info
+          flags: flutter
+          name: flutter-coverage
+
+  # ============================================
+  # WEB BUILD JOB
+  # ============================================
+  build-web:
+    runs-on: [self-hosted, linux, flutter, chrome]
+    needs: test
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.event.inputs.build_type == 'web')
+    continue-on-error: false
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup Flutter
+      # ============================================
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          architecture: x64
+
+      # ============================================
+      # Cache Flutter dependencies
+      # ============================================
+      - name: Cache Flutter dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            **/.packages
+            **/.flutter-plugins
+            **/.flutter-plugin-dependencies
+            **/.dart_tool
+          key: ${{ runner.os }}-flutter-${{ hashFiles('**/pubspec.lock') }}
+
+      # ============================================
+      # Install dependencies
+      # ============================================
+      - name: Install dependencies
+        run: flutter pub get
+
+      # ============================================
+      # Build web
+      # ============================================
+      - name: Build web
+        run: flutter build web --release --base-href /${{ github.event.repository.name }}/
+
+      # ============================================
+      # Upload web build artifacts
+      # ============================================
+      - name: Upload web build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-web-${{ github.run_id }}
+          path: build/web
+          retention-days: 7
+
+      # ============================================
+      # Deploy to Firebase Hosting (optional)
+      # ============================================
+      - name: Deploy to Firebase Hosting
+        if: github.ref == 'refs/heads/main'
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
+          channelId: live
+          projectId: '${{ secrets.FIREBASE_PROJECT_ID }}'
+
+  # ============================================
+  # ANDROID BUILD JOB
+  # ============================================
+  build-android:
+    runs-on: [self-hosted, linux, flutter]
+    needs: test
+    strategy:
+      matrix:
+        build-type: [apk, appbundle]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || contains(github.event.inputs.build_type, matrix.build-type))
+    continue-on-error: false
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup Flutter
+      # ============================================
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          architecture: x64
+
+      # ============================================
+      # Cache Flutter dependencies
+      # ============================================
+      - name: Cache Flutter dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            **/.packages
+            **/.flutter-plugins
+            **/.flutter-plugin-dependencies
+            **/.dart_tool
+          key: ${{ runner.os }}-flutter-${{ hashFiles('**/pubspec.lock') }}
+
+      # ============================================
+      # Install dependencies
+      # ============================================
+      - name: Install dependencies
+        run: flutter pub get
+
+      # ============================================
+      # Setup Android SDK
+      # ============================================
+      - name: Setup Android SDK
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME}" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}" >> $GITHUB_ENV
+
+      # ============================================
+      # Build Android
+      # ============================================
+      - name: Build Android ${{ matrix.build-type }}
+        run: |
+          case "${{ matrix.build-type }}" in
+            apk)
+              flutter build apk \
+                --release \
+                --target lib/main_production.dart
+              ;;
+            appbundle)
+              flutter build appbundle \
+                --release \
+                --target lib/main_production.dart
+              ;;
+          esac
+
+      # ============================================
+      # Upload build artifacts
+      # ============================================
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-${{ matrix.build-type }}-${{ github.run_id }}
+          path: |
+            build/app/outputs/flutter-apk/
+            build/app/outputs/bundle/
+          retention-days: 7
+
+  # ============================================
+  # INTEGRATION TEST JOB
+  # ============================================
+  integration-test:
+    runs-on: [self-hosted, linux, flutter]
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    continue-on-error: false
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup Flutter
+      # ============================================
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          architecture: x64
+
+      # ============================================
+      # Cache Flutter dependencies
+      # ============================================
+      - name: Cache Flutter dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            **/.packages
+            **/.flutter-plugins
+            **/.flutter-plugin-dependencies
+            **/.dart_tool
+          key: ${{ runner.os }}-flutter-${{ hashFiles('**/pubspec.lock') }}
+
+      # ============================================
+      # Install dependencies
+      # ============================================
+      - name: Install dependencies
+        run: flutter pub get
+
+      # ============================================
+      # Install integration test dependencies
+      # ============================================
+      - name: Install integration test dependencies
+        run: |
+          npm install -g firebase-tools
+
+      # ============================================
+      # Run integration tests
+      # ============================================
+      - name: Run integration tests
+        run: |
+          flutter test integration_test \
+            --reporter json \
+            > integration-results.json || true
+
+      # ============================================
+      # Upload test results
+      # ============================================
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-test-results-${{ github.run_id }}
+          path: integration-results.json
+          retention-days: 7
+
+  # ============================================
+  # LINT JOB
+  # ============================================
+  lint:
+    runs-on: [self-hosted, linux, flutter]
+    continue-on-error: true
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup Flutter
+      # ============================================
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          architecture: x64
+
+      # ============================================
+      # Install dependencies
+      # ============================================
+      - name: Install dependencies
+        run: flutter pub get
+
+      # ============================================
+      # Run dart lint
+      # ============================================
+      - name: Run dart lint
+        run: |
+          flutter analyze --fatal-infories --fatal-warnings
+
+      # ============================================
+      # Check for unused files
+      # ============================================
+      - name: Check for unused files
+        run: |
+          flutter pub run dart_code_metrics analyze \
+            --reporter console \
+            --no-summary \
+            --no-concise
+
+  # ============================================
+  # SECURITY SCANNING JOB
+  # ============================================
+  security:
+    runs-on: [self-hosted, linux, flutter]
+    continue-on-error: true
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup Flutter
+      # ============================================
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          architecture: x64
+
+      # ============================================
+      # Install dependencies
+      # ============================================
+      - name: Install dependencies
+        run: flutter pub get
+
+      # ============================================
+      # Run security audit
+      # ============================================
+      - name: Run security audit
+        run: |
+          flutter pub run dart_code_metrics analyze \
+            --reporter json \
+            --no-summary > security-results.json || true
+
+      # ============================================
+      # Upload security results
+      # ============================================
+      - name: Upload security results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: flutter-security-${{ github.run_id }}
+          path: security-results.json
+          retention-days: 7
+
+  # ============================================
+  # DEPLOY JOB
+  # ============================================
+  deploy:
+    runs-on: [self-hosted, linux, flutter]
+    needs: [build-android, build-web, integration-test]
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup Flutter
+      # ============================================
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          architecture: x64
+
+      # ============================================
+      # Download Android artifacts
+      # ============================================
+      - name: Download Android artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: flutter-apk-*
+          merge-multiple: true
+          path: artifacts/android/
+
+      # ============================================
+      # Download Web artifacts
+      # ============================================
+      - name: Download Web artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: flutter-web-*
+          merge-multiple: true
+          path: artifacts/web/
+
+      # ============================================
+      # Deploy to server
+      # ============================================
+      - name: Deploy to server
+        run: |
+          echo "Deployment script would go here"
+          # Add your deployment script
+          # ./deploy-flutter.sh
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+
+      # ============================================
+      # Publish to App Store/Google Play (optional)
+      # ============================================
+      - name: Publish to stores
+        run: |
+          echo "Publish script would go here"
+          # Add your publish script
+          # ./publish-flutter.sh
+
+  # ============================================
+  # POST-BUILD CLEANUP
+  # ============================================
+  cleanup:
+    runs-on: [self-hosted, linux, flutter]
+    needs: [analyze, test, build-web, build-android, integration-test, lint, security]
+    if: always()
+
+    steps:
+      - name: Cleanup build artifacts
+        run: |
+          echo "Cleaning up build artifacts..."
+          rm -rf build/ coverage/ docs/api/ .dart_tool/ .flutter-plugins/ .packages/
+          echo "Cleanup complete"
+
+  # ============================================
+  # NOTIFICATION JOB
+  # ============================================
+  notify:
+    runs-on: [self-hosted, linux, flutter]
+    needs: [test, build-android, build-web, integration-test]
+    if: always()
+
+    steps:
+      - name: Send notification
+        run: |
+          echo "Flutter CI/CD pipeline completed"
+          echo "Unit test status: ${{ needs.test.result }}"
+          echo "Android build status: ${{ needs.build-android.result }}"
+          echo "Web build status: ${{ needs.build-web.result }}"
+          echo "Integration test status: ${{ needs.integration-test.result }}"
+          # Add your notification logic here
+          # curl -X POST $SLACK_WEBHOOK_URL -d '{"text":"Flutter CI complete"}'

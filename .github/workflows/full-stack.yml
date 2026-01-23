@@ -1,0 +1,773 @@
+# Full Stack Development Workflow
+# Uses: gh-runner:full-stack (~2.5GB)
+# Runner labels: linux, full, all
+
+name: Full Stack Development
+
+on:
+  # Trigger on push to main or develop branches
+  push:
+    branches:
+      - main
+      - develop
+      - staging
+  # Trigger on pull requests
+  pull_request:
+    branches:
+      - main
+      - develop
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      build_all:
+        description: 'Build all languages'
+        required: true
+        default: true
+        type: choice
+        options:
+          - true
+          - false
+
+# Environment variables
+env:
+  PYTHON_VERSION: '3.10'
+  NODE_VERSION: '20'
+  GO_VERSION: '1.22'
+  CPP_BUILD_TYPE: 'Release'
+
+jobs:
+  # ============================================
+  # CPP TEST JOB
+  # ============================================
+  test-cpp:
+    runs-on: [self-hosted, linux, full]
+    strategy:
+      matrix:
+        compiler: [gcc, clang]
+        include:
+          - compiler: gcc
+            cc: gcc
+            cxx: g++
+          - compiler: clang
+            cc: clang
+            cxx: clang++
+    continue-on-error: false
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # ============================================
+      # Configure build environment
+      # ============================================
+      - name: Configure build environment
+        run: |
+          echo "CC=${{ matrix.cc }}" >> $GITHUB_ENV
+          echo "CXX=${{ matrix.cxx }}" >> $GITHUB_ENV
+          echo "CMAKE_BUILD_TYPE=${{ env.CPP_BUILD_TYPE }}" >> $GITHUB_ENV
+
+      # ============================================
+      # Configure CMake
+      # ============================================
+      - name: Configure CMake
+        run: |
+          cmake -B build \
+            -DCMAKE_C_COMPILER=${{ matrix.cc }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} \
+            -DCMAKE_BUILD_TYPE=${{ env.CPP_BUILD_TYPE }} \
+            .
+
+      # ============================================
+      # Build
+      # ============================================
+      - name: Build
+        run: cmake --build build --parallel $(nproc)
+
+      # ============================================
+      # Run tests
+      # ============================================
+      - name: Run tests
+        run: |
+          if [ -d build ]; then
+            cd build
+            ctest --output-on-failure --parallel $(nproc)
+          fi
+
+      # ============================================
+      # Upload artifacts
+      # ============================================
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpp-build-${{ matrix.compiler }}-${{ github.run_id }}
+          path: |
+            build/
+          retention-days: 7
+
+  # ============================================
+  # PYTHON TEST JOB
+  # ============================================
+  test-python:
+    runs-on: [self-hosted, linux, full]
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11']
+    continue-on-error: false
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup Python
+      # ============================================
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # ============================================
+      # Cache pip dependencies
+      # ============================================
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt', '**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      # ============================================
+      # Install dependencies
+      # ============================================
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+          pip install pytest pytest-cov pytest-mock
+
+      # ============================================
+      # Run tests
+      # ============================================
+      - name: Run tests
+        run: |
+          pytest tests/ \
+            --cov=src/ \
+            --cov-report=xml \
+            --cov-report=html \
+            --junitxml=test-results/junit.xml \
+            --verbose
+
+      # ============================================
+      # Upload artifacts
+      # ============================================
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-test-results-${{ matrix.python-version }}-${{ github.run_id }}
+          path: |
+            test-results/
+            htmlcov/
+            coverage.xml
+          retention-days: 7
+
+      # ============================================
+      # Upload coverage to Codecov
+      # ============================================
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: python
+          name: python-coverage
+
+  # ============================================
+  # NODE.JS TEST JOB
+  # ============================================
+  test-node:
+    runs-on: [self-hosted, linux, full]
+    strategy:
+      matrix:
+        node-version: [18, 20]
+    continue-on-error: false
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup Node.js
+      # ============================================
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          registry-url: 'https://registry.npmjs.org'
+
+      # ============================================
+      # Cache Node.js dependencies
+      # ============================================
+      - name: Cache Node.js dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      # ============================================
+      # Install dependencies
+      # ============================================
+      - name: Install dependencies
+        run: npm ci
+
+      # ============================================
+      # Run linters
+      # ============================================
+      - name: Run linters
+        run: |
+          npm run lint || echo "Linting completed with warnings"
+
+      # ============================================
+      # Run tests
+      # ============================================
+      - name: Run tests
+        run: npm test
+
+      # ============================================
+      # Build
+      # ============================================
+      - name: Build
+        run: npm run build
+
+      # ============================================
+      # Upload artifacts
+      # ============================================
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-build-${{ matrix.node-version }}-${{ github.run_id }}
+          path: |
+            dist/
+            build/
+            .next/
+            out/
+          retention-days: 7
+
+  # ============================================
+  # GO TEST JOB
+  # ============================================
+  test-go:
+    runs-on: [self-hosted, linux, full]
+    strategy:
+      matrix:
+        go-version: ['1.21', '1.22']
+    continue-on-error: false
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup Go
+      # ============================================
+      - name: Setup Go ${{ matrix.go-version }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: true
+
+      # ============================================
+      # Install dependencies
+      # ============================================
+      - name: Install dependencies
+        run: go mod download
+
+      # ============================================
+      # Run tests
+      # ============================================
+      - name: Run tests
+        run: go test ./... -race -coverprofile=coverage.out -covermode=atomic
+
+      # ============================================
+      # Generate coverage report
+      # ============================================
+      - name: Generate coverage report
+        run: go tool cover -html=coverage.out -o coverage.html
+
+      # ============================================
+      # Build
+      # ============================================
+      - name: Build
+        run: |
+          go build -o bin/app ./cmd/app
+          go build -o bin/server ./cmd/server
+
+      # ============================================
+      # Upload artifacts
+      # ============================================
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-build-${{ matrix.go-version }}-${{ github.run_id }}
+          path: |
+            bin/
+            coverage.out
+            coverage.html
+          retention-days: 7
+
+  # ============================================
+  # CROSS-LANGUAGE JOB
+  # ============================================
+  cross-language:
+    runs-on: [self-hosted, linux, full]
+    needs: [test-cpp, test-python, test-node, test-go]
+    continue-on-error: false
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup all languages
+      # ============================================
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      # ============================================
+      # Install all dependencies
+      # ============================================
+      - name: Install all dependencies
+        run: |
+          # Python
+          pip install -r requirements.txt 2>/dev/null || true
+          # Node.js
+          npm ci 2>/dev/null || true
+          # Go
+          go mod download 2>/dev/null || true
+
+      # ============================================
+      # Run cross-language integration tests
+      # ============================================
+      - name: Run cross-language integration tests
+        run: |
+          # Run tests in parallel for efficiency
+          pytest tests/integration/ --timeout=30 &
+          PY_PID=$!
+          npm test &
+          NODE_PID=$!
+          go test ./... &
+          GO_PID=$!
+          wait $PY_PID
+          wait $NODE_PID
+          wait $GO_PID
+
+      # ============================================
+      # Run API integration tests
+      # ============================================
+      - name: Run API integration tests
+        run: |
+          if [ -f tests/api/integration_test.py ]; then
+            python tests/api/integration_test.py
+          fi
+
+  # ============================================
+  # DOCKER BUILD JOB
+  # ============================================
+  build-docker:
+    runs-on: [self-hosted, linux, full, docker]
+    needs: cross-language
+    strategy:
+      matrix:
+        service: [backend, frontend, worker]
+        include:
+          - service: backend
+            context: backend
+            dockerfile: backend/Dockerfile
+          - service: frontend
+            context: frontend
+            dockerfile: frontend/Dockerfile
+          - service: worker
+            context: worker
+            dockerfile: worker/Dockerfile
+    continue-on-error: false
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup Docker Buildx
+      # ============================================
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ============================================
+      # Login to Docker Hub
+      # ============================================
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # ============================================
+      # Extract metadata
+      # ============================================
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKER_USERNAME }}/myapp-${{ matrix.service }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # ============================================
+      # Build and push Docker image
+      # ============================================
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/myapp-${{ matrix.service }}:buildcache
+          cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/myapp-${{ matrix.service }}:buildcache,mode=max
+
+      # ============================================
+      # Run security scan
+      # ============================================
+      - name: Run security scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ secrets.DOCKER_USERNAME }}/myapp-${{ matrix.service }}:latest'
+          format: 'sarif'
+          output: 'trivy-${{ matrix.service }}.sarif'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-${{ matrix.service }}.sarif'
+
+  # ============================================
+  # E2E TEST JOB
+  # ============================================
+  e2e-test:
+    runs-on: [self-hosted, linux, full, docker]
+    needs: [cross-language, build-docker]
+    environment: staging
+    continue-on-error: false
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup Python
+      # ============================================
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # ============================================
+      # Setup Node.js
+      # ============================================
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # ============================================
+      # Install test dependencies
+      # ============================================
+      - name: Install test dependencies
+        run: |
+          pip install selenium webdriver-manager
+          npm install -g selenium-standalone
+          selenium-standalone install
+
+      # ============================================
+      # Start test environment
+      # ============================================
+      - name: Start test environment
+        run: |
+          docker-compose -f docker-compose.test.yml up -d
+          sleep 30  # Wait for services to be ready
+
+      # ============================================
+      # Run E2E tests
+      # ============================================
+      - name: Run E2E tests
+        run: |
+          # Run backend API tests
+          pytest tests/api/ --timeout=60 &
+          API_PID=$!
+          # Run frontend E2E tests
+          npm run test:e2e &
+          FE_PID=$!
+          wait $API_PID
+          wait $FE_PID
+
+      # ============================================
+      # Upload test artifacts
+      # ============================================
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-test-results-${{ github.run_id }}
+          path: |
+            test-results/
+            playwright-report/
+            screenshots/
+          retention-days: 7
+
+      # ============================================
+      # Stop test environment
+      # ============================================
+      - name: Stop test environment
+        if: always()
+        run: |
+          docker-compose -f docker-compose.test.yml down -v
+
+  # ============================================
+  # DEPLOY JOB
+  # ============================================
+  deploy:
+    runs-on: [self-hosted, linux, full]
+    needs: [cross-language, build-docker, e2e-test]
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging')
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Download all build artifacts
+      # ============================================
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: |
+            cpp-build-*
+            python-test-results-*
+            node-build-*
+            go-build-*
+          merge-multiple: true
+          path: artifacts/
+
+      # ============================================
+      # Deploy to server
+      # ============================================
+      - name: Deploy to server
+        run: |
+          echo "Deployment script would go here"
+          # Add your deployment script
+          # ./deploy-full.sh
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+
+      # ============================================
+      # Run smoke tests
+      # ============================================
+      - name: Run smoke tests
+        run: |
+          echo "Smoke tests would go here"
+          # Add your smoke test script
+          # ./smoke-test.sh
+
+  # ============================================
+  # SECURITY JOB
+  # ============================================
+  security:
+    runs-on: [self-hosted, linux, full]
+    continue-on-error: true
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Run security scans for all languages
+      # ============================================
+      - name: Run security scans
+        run: |
+          # Python
+          pip install bandit safety
+          bandit -r src/ -f json -o bandit-results.json 2>/dev/null || true
+          safety check --json 2>/dev/null || true
+          # Node.js
+          npm audit --json 2>/dev/null || true
+          # Go
+          go list -json -m all | nancy sleuth 2>/dev/null || true
+
+      # ============================================
+      # Upload security results
+      # ============================================
+      - name: Upload security results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-results-${{ github.run_id }}
+          path: |
+            bandit-results.json
+          retention-days: 7
+
+  # ============================================
+  # LINT JOB
+  # ============================================
+  lint:
+    runs-on: [self-hosted, linux, full]
+    continue-on-error: true
+
+    steps:
+      # ============================================
+      # Checkout code
+      # ============================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Setup Python
+      # ============================================
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # ============================================
+      # Setup Node.js
+      # ============================================
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # ============================================
+      # Setup Go
+      # ============================================
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      # ============================================
+      # Install linting tools
+      # ============================================
+      - name: Install linting tools
+        run: |
+          pip install flake8 black isort mypy
+          npm install -g eslint prettier
+
+      # ============================================
+      # Run linters for all languages
+      # ============================================
+      - name: Run linters
+        run: |
+          # Python
+          flake8 src/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
+          black --check src/ tests/
+          isort --check-only src/ tests/
+          # Node.js
+          npm run lint || echo "Node.js linting completed"
+          # Go
+          go vet ./...
+          gofmt -l .
+
+  # ============================================
+  # POST-BUILD CLEANUP
+  # ============================================
+  cleanup:
+    runs-on: [self-hosted, linux, full]
+    needs: [test-cpp, test-python, test-node, test-go, cross-language, build-docker, e2e-test, security, lint]
+    if: always()
+
+    steps:
+      - name: Cleanup build artifacts
+        run: |
+          echo "Cleaning up build artifacts..."
+          rm -rf build/ dist/ bin/ .next/ out/ coverage/ test-results/ artifacts/
+          echo "Cleanup complete"
+
+  # ============================================
+  # NOTIFICATION JOB
+  # ============================================
+  notify:
+    runs-on: [self-hosted, linux, full]
+    needs: [test-cpp, test-python, test-node, test-go, cross-language, e2e-test]
+    if: always()
+
+    steps:
+      - name: Send notification
+        run: |
+          echo "Full Stack CI/CD pipeline completed"
+          echo "C++ test status: ${{ needs.test-cpp.result }}"
+          echo "Python test status: ${{ needs.test-python.result }}"
+          echo "Node.js test status: ${{ needs.test-node.result }}"
+          echo "Go test status: ${{ needs.test-go.result }}"
+          echo "Cross-language test status: ${{ needs.cross-language.result }}"
+          echo "E2E test status: ${{ needs.e2e-test.result }}"
+          # Add your notification logic here
+          # curl -X POST $SLACK_WEBHOOK_URL -d '{"text":"Full Stack CI complete"}'
