@@ -863,78 +863,6 @@ docker build -f docker/linux/composite/Dockerfile.cpp-only \
     --no-cache -t gh-runner:cpp-only .
 ```
 
-## 🎯 Use Cases
-
-### 1. C/C++ Development
-**Best for**: Systems programming, embedded development, game development
-**Tools**: GCC, Clang, CMake, Make, GDB, Valgrind
-
-### 2. Python/ML Development
-**Best for**: Django/Flask apps, machine learning, data science
-**Tools**: Python 3, pip, venv, NumPy, pandas, scikit-learn
-
-### 3. Web Development
-**Best for**: Node.js APIs, Go services, React/Vue builds
-**Tools**: Node.js 20, npm/yarn/pnpm, Go 1.22, nginx
-
-### 4. Flutter Mobile Development
-**Best for**: Flutter apps, cross-platform mobile development (Android/iOS)
-**Tools**: Flutter 3.19, Dart 3.3, Android SDK, Chrome for web testing
-
-### 5. Flet (Python→Flutter) Development
-**Best for**: Cross-platform apps built with Python, mobile + web
-**Tools**: Flet 0.22.0, Python 3.x, Flutter 3.19, Android SDK
-
-### 6. Full Stack (Legacy)
-**Best for**: Migration from monolith, maximum compatibility
-**Tools**: All languages (Python, C++, Node.js, Go, Flutter, Flet)
-
-## 📊 Cost Analysis
-
-### Monthly Storage Costs (AWS EBS @ $0.10/GB)
-
-| Deployment | Monolith | Modular | Monthly Savings |
-|------------|----------|---------|-----------------|
-| 1 runner | $0.25 | $0.05 | $0.20 (80%) |
-| 5 runners | $1.25 | $0.25 | $1.00 (80%) |
-| 20 runners | $5.00 | $1.00 | $4.00 (80%) |
-
-### Network Transfer Savings
-- **Monolith**: 2.5GB per image pull
-- **Modular**: 300-600MB per pull
-- **Savings**: 76% average reduction
-
-## 🚦 Migration Path
-
-### From Monolith to Modular
-
-**Phase 1: Assess** (1-2 days)
-```bash
-# Analyze current usage
-grep -r "runs-on:" .github/workflows/
-```
-
-**Phase 2: Deploy** (1-2 days)
-```bash
-# Deploy new runners alongside existing
-docker-compose -f docker-compose/linux-cpp.yml up -d
-```
-
-**Phase 3: Migrate** (1-2 weeks)
-```yaml
-# Update workflow labels
-runs-on: [self-hosted, linux, cpp]  # Instead of 'full'
-```
-
-**Phase 4: Optimize** (3-5 days)
-- Monitor performance
-- Adjust resource limits
-- Optimize caching
-
-**Phase 5: Cleanup** (1 day)
-- Remove old monolith runners
-- Update documentation
-
 ## 🎓 Advanced Topics
 
 ### Custom Combinations
@@ -1069,14 +997,6 @@ We welcome contributions! See the [CONTRIBUTING.md](CONTRIBUTING.md) file for de
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-This project builds upon:
-- GitHub Actions Runner
-- Ubuntu LTS images
-- Docker best practices
-- CI/CD community contributions
 
 ---
 
