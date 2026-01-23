@@ -754,30 +754,6 @@ docker-compose -f docker-compose/linux-python.yml up -d \
 - **Migration Guide**: `docs/linux-modular/migration.md`
 - **Performance**: `docs/linux-modular/performance.md`
 
-## 📊 Performance Comparison
-
-### Build Time Benchmarks
-```bash
-# C++ Project
-Old: 8m 30s  → New: 2m 15s  (74% faster)
-
-# Python Project
-Old: 6m 45s  → New: 1m 50s  (73% faster)
-
-# Web Project
-Old: 10m 15s → New: 3m 00s  (71% faster)
-```
-
-### Storage Usage
-```
-Scenario                      | Monolith | Modular | Savings
-------------------------------|----------|---------|----------
-C++ only                      | 2.5GB    | 550MB   | 78%
-Python only                   | 2.5GB    | 450MB   | 82%
-Web (Node+Go)                 | 2.5GB    | 580MB   | 77%
-All languages                 | 2.5GB    | 2.5GB   | 0%
-```
-
 ## 🛠️ Building Custom Images
 
 ### Manual Build Process
