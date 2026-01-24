@@ -58,21 +58,36 @@ configure_runner() {
 
     # Generate registration token
     log "Generating registration token..."
-    local registration_token
+    local registration_token_response
     if [ -n "${GITHUB_REPOSITORY}" ]; then
-        registration_token=$(curl -s -X POST \
+        registration_token_response=$(curl -s -w "\n%{http_code}" -X POST \
             -H "Authorization: token ${GITHUB_TOKEN}" \
             -H "Accept: application/vnd.github.v3+json" \
-            "${runner_url}/actions/runners/registration-token" | jq -r '.token')
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runners/registration-token")
     else
-        registration_token=$(curl -s -X POST \
+        registration_token_response=$(curl -s -w "\n%{http_code}" -X POST \
             -H "Authorization: token ${GITHUB_TOKEN}" \
             -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/orgs/${GITHUB_OWNER}/actions/runners/registration-token" | jq -r '.token')
+            "https://api.github.com/orgs/${GITHUB_OWNER}/actions/runners/registration-token")
     fi
 
+    local registration_token
+    local response_body=$(echo "$registration_token_response" | head -n -1)
+    local http_code=$(echo "$registration_token_response" | tail -n 1)
+
+    # Debug: show raw response
+    log "Raw API Response: $response_body"
+    log "HTTP Status Code: $http_code"
+
+    registration_token=$(echo "$response_body" | jq -r '.token' 2>/dev/null)
+
     if [ -z "${registration_token}" ] || [ "${registration_token}" = "null" ]; then
-        log "ERROR: Failed to generate registration token. Check GITHUB_TOKEN permissions."
+        log "ERROR: Failed to generate registration token. HTTP Status: ${http_code}"
+        # Try to extract error message with multiple fallbacks
+        local error_msg=$(echo "$response_body" | jq -r '.message // .detail // .error // .errors[0].message // "Unknown error"' 2>/dev/null)
+        log "API Error: $error_msg"
+        log "Full response: $response_body"
+        log "Check GITHUB_TOKEN permissions and ensure it has 'repo' scope (classic PAT) or 'Actions: Read/Write' (fine-grained)."
         return 1
     fi
 
@@ -124,14 +139,23 @@ configure_runner() {
 start_runner() {
     log "Starting GitHub Actions runner..."
 
-    # Run as root if specified, otherwise run as runner user
+    # Check if we're running as root
+    local current_user=$(id -un)
+
     if [ "${RUNNER_AS_ROOT}" = "true" ]; then
         log "Running as root (not recommended for production)"
         ./run.sh
+    elif [ "${current_user}" = "runner" ]; then
+        # Already running as runner user - just run directly
+        log "Running as runner user: ${current_user}"
+        ./run.sh
     else
+        # Running as root but need to switch to runner user
+        log "Running as root, switching to runner user for runner execution"
+        # Change ownership of /actions-runner to runner user
+        chown -R runner:runner /actions-runner 2>/dev/null || log "Note: Could not change ownership"
         # Switch to runner user and start the runner
-        # Use sudo to preserve environment variables
-        sudo -E -u runner ./run.sh
+        su runner -c "./run.sh"
     fi
 }
 
@@ -155,16 +179,24 @@ cleanup_runner() {
             if [ -n "${runner_id}" ]; then
                 log "Removing runner ${runner_id} from GitHub..."
 
+                local delete_response
                 if [ -n "${GITHUB_REPOSITORY}" ]; then
-                    curl -s -X DELETE \
+                    delete_response=$(curl -s -w "\n%{http_code}" -X DELETE \
                         -H "Authorization: token ${GITHUB_TOKEN}" \
                         -H "Accept: application/vnd.github.v3+json" \
-                        "${runner_url}/actions/runners/${runner_id}" > /dev/null 2>&1
+                        "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runners/${runner_id}")
                 else
-                    curl -s -X DELETE \
+                    delete_response=$(curl -s -w "\n%{http_code}" -X DELETE \
                         -H "Authorization: token ${GITHUB_TOKEN}" \
                         -H "Accept: application/vnd.github.v3+json" \
-                        "https://api.github.com/orgs/${GITHUB_OWNER}/actions/runners/${runner_id}" > /dev/null 2>&1
+                        "https://api.github.com/orgs/${GITHUB_OWNER}/actions/runners/${runner_id}")
+                fi
+
+                local delete_code=$(echo "$delete_response" | tail -n 1)
+                if [ "$delete_code" -eq 204 ]; then
+                    log "Runner ${runner_id} removed successfully"
+                else
+                    log "Failed to remove runner ${runner_id}. HTTP Status: ${delete_code}"
                 fi
             fi
         fi
@@ -217,6 +249,17 @@ main() {
     if ! validate_environment; then
         log "Environment validation failed"
         exit 1
+    fi
+
+    # Copy runner files from /opt/actions-runner if they don't exist
+    # This handles the case where /actions-runner is mounted via docker-compose
+    if [ ! -f /actions-runner/config.sh ] && [ -d /opt/actions-runner ]; then
+        log "Copying runner files from /opt/actions-runner to /actions-runner..."
+        # Use rsync or cp with proper permissions
+        cp -r /opt/actions-runner/* /actions-runner/ 2>/dev/null || cp -r /opt/actions-runner/* /actions-runner/
+        chmod +x /actions-runner/*.sh 2>/dev/null
+        chown -R runner:runner /actions-runner 2>/dev/null || log "Note: Could not change ownership of /actions-runner"
+        log "Runner files copied successfully"
     fi
 
     # Configure the runner if not already configured

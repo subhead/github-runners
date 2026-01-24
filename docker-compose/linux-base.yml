@@ -43,8 +43,8 @@ services:
     environment:
       - GITHUB_TOKEN=${GITHUB_TOKEN:?GITHUB_TOKEN}
       # Choose ONE: GITHUB_OWNER for org runners, GITHUB_REPOSITORY for repo runners
-      - GITHUB_OWNER=${GITHUB_OWNER}
-      #- GITHUB_REPOSITORY=${GITHUB_REPOSITORY}
+      #- GITHUB_OWNER=${GITHUB_OWNER}
+      - GITHUB_REPOSITORY=${GITHUB_REPOSITORY}
       - RUNNER_NAME=${RUNNER_NAME:-base-runner-01}
       - RUNNER_LABELS=${RUNNER_LABELS:-linux,base,minimal}
       - RUNNER_GROUP=${RUNNER_GROUP:-Default}
