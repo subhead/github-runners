@@ -21,12 +21,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     software-properties-common \
     && rm -rf /var/lib/apt/lists/*
 
-# Install GitHub Actions runner
+# Install GitHub Actions runner to a non-mounted location
+# This prevents issues when /actions-runner is mounted via docker-compose
 ARG RUNNER_VERSION=2.331.0
-RUN mkdir -p /actions-runner && \
+RUN mkdir -p /opt/actions-runner && \
     curl -o /tmp/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz \
     -L https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz && \
-    tar xzf /tmp/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz -C /actions-runner && \
+    tar xzf /tmp/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz -C /opt/actions-runner && \
     rm /tmp/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz
 
 # Create runner user with appropriate permissions
@@ -57,4 +58,3 @@ LABEL org.opencontainers.image.source="https://github.com/cicd/github-runner" \
       org.opencontainers.image.base.name="ubuntu:22.04"
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["--help"]
